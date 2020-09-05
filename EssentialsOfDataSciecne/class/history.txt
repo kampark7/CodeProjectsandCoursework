@@ -1,0 +1,13 @@
+  422  cd CS233Lab1
+  423  ls
+  424  nano README.md
+  425  git add https://github.com/kampark7/CS233Lab1.git
+  426  git init
+  427  git add https://github.com/kampark7/CS233Lab1.git
+  428  git status
+  429  git add README.md
+  430  git status
+  431  git commit -m "Most up to date read me"
+  432  git push origin master
+  433  history
+  434  history > history.txt
