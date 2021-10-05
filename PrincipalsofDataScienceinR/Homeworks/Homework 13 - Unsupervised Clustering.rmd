@@ -1,0 +1,140 @@
+---
+title: "Homework 13 - Unsupervised Clustering"
+output: html_notebook
+author: "Kamryn Parker"
+---
+There are four types of clustering:
+* Centroid-Based (K-Means)
+* Connectivity-Based (Hierarchical)
+* Distribution-Based (Gaussian Mixture Models - GMM)
+* Density-Based (DBSCAN)
+
+Find a dataset (any dataset that you want).
+
+1. Apply one of the clustering algorithms above to your dataset (you can pick which variables, and how many, you want to focus on), and plot the results.
+
+```{r}
+library(tidyverse)
+library(palmerpenguins)
+library(dplyr)
+
+df = subset(penguins, select = -c(species, island, sex, year)) #creating a variable only data set with no character values
+
+df <- df %>% filter(complete.cases(.)) #filtering for NA data
+
+qplot(flipper_length_mm, bill_length_mm, data = df) #making an original plot of data I want to cluster based of specific parameters
+
+df <- scale(df) #scaling the data to make it less suseptible to misrepresentation
+df <- as.tibble(df, rownames = NA)
+
+qplot(flipper_length_mm, bill_length_mm, data = df)
+
+K_mean_vis <- function(K){ #making a K means algorithm
+(clusters <- df %>% #clustering is going to be based on my penguins data and the 2 parameters I pass into it
+  dplyr::select(flipper_length_mm, bill_length_mm) %>%
+  kmeans(centers = K))
+
+df$clusters <- as.factor(clusters$cluster) #Making the clusters factors of the data set
+
+ggplot(df, aes(x = flipper_length_mm, y = bill_length_mm, color = clusters)) + #plotting the data
+  geom_point()
+}
+
+visual_plot <- K_mean_vis(2) #presenting the data with only 2 clusters
+```
+
+2a. Create an information-loss "elbow chart" for one of your clustering hyperparameters.
+```{r}
+K_mean_eval <- function(K_list){ #evaluating the K menas cluster algorithm to find the best cluster amount
+    df %>%
+    dplyr::select(flipper_length_mm, bill_length_mm)
+  
+  eval_vector <- vector()
+  K_vector <- vector()
+  
+  for (K in K_list){
+    clusters <- df %>%
+      kmeans(centers = K)
+    
+    eval_vector <- append(eval_vector, clusters$tot.withinss)
+    K_vector <- append(K_vector, K)
+  }
+  return(tibble(K_vector, eval_vector))
+}
+
+K_list <- seq(1, 10) #printing the elbow plot of the data clusters
+K_mean_eval(K_list) %>%
+  ggplot(aes(x = K_vector, y = eval_vector)) +
+    geom_point() +
+    geom_line()
+```
+2b. Looking at your elbow chart, and applying your personal judgement - which hyperparameter seems like it might be most useful?
+>
+It looks like 3 would be our most useful hyperparameter since it is right at the crease of our elbow chart.
+>
+
+2c. Copy your code from question 1, and re-run it with your new 'tuned' hyperparameter.
+```{r}
+K_mean_vis_redo <- function(K2){ #basiaclly doing the same thing as above but changing the number of clusters
+(clusters <- df %>%
+  dplyr::select(flipper_length_mm, bill_length_mm) %>%
+  kmeans(centers = K2))
+
+df$clusters <- as.factor(clusters$cluster)
+
+ggplot(df, aes(x = flipper_length_mm, y = bill_length_mm, color = clusters)) +
+  geom_point()
+}
+
+K_mean_vis_redo(3)
+
+penguins %>% #making a simple scatter plot of a distribution. I decided to also include the species just to see where they lie on the graph
+  ggplot(aes(x=flipper_length_mm, y=bill_length_mm, color = species)) +
+    geom_point() +
+    xlab("Flipper Length in mm") +
+    ylab("Bill Length in mm") +
+    ggtitle("Bill Length of Penguins by Flipper Length")
+```
+2d. Did your elbow chart help to improve your model? Why or why not?
+>
+I think so because if I were to lay this over a point plot with each species this plot mathes pretty well with which species is which. I did that and it can be seen that there are a few overlaps but overall it clustered each species fairly well.
+>
+
+3. Apply a different clustering algorithm to your data, and plot the results.
+```{r}
+library(fpc)
+library(dbscan)
+db_cluster <- fpc::dbscan(df, eps = 1.2, MinPts = 3, method = "hybrid")
+plot(db_cluster, df, main = "DBSCAN")
+```
+
+4a. Create another 'elbow chart' for your second algorithm, to find a good hyperparameter.
+```{r}
+dbscan::kNNdistplot(df, k= 3) #making a similar elbow plot but for epsilon values instead for DBSCAN
+```
+
+4b. Looking at your elbow chart, and applying your personal judgement - which hyperparameter seems like it might be most useful?
+>
+It looks like the epsilon value of 0.8 would be a good choice to improve our hyperparameters
+>
+
+4c. Copy your code from question 1, and re-run it with your new 'tuned' hyperparameter.
+```{r}
+fpc::dbscan(df, eps = 0.8, MinPts = 3) %>%
+  plot(df, main = "DBSCAN") #chaning based on the hyperparameter tuning from 4a
+```
+
+4d. Did your elbow chart help to improve your model? Why or why not?
+>
+I do not see nay improvemnt neccesarily. If anything there seems to be more outliers in the data set.
+>
+
+5a. Was there a significant difference between how your two algorithms clustered the data? Why or why not? 
+>
+I do not think there was any serious difference in the data besides the DBSCAN was only two categories while the K-Means was 3. Also the DBSCAN used all the parameters in my data set whereas the K-Means cluster only looked at 2 parameters that I pre-set.
+>
+
+5b. Was either cluster useful for exploring your data? Was one more useful than the other? Why or why not?
+>
+I think the K-Means was more uiseful for what I was trying ot identify. Since I wanted to see if I could cluster species based on different parameters the K-Means was clearer to understand what those clusters were per species. I think that one overall helped me with identifying certain species vs. the DBSCAN
+>

@@ -1,0 +1,340 @@
+Lecture 2 - Week 10
+========================================================
+author: 
+date: 
+autosize: true
+
+Smoothing
+========================================================
+Vocab:
+* Smoothing
+* Curve Fitting
+* Low Pass Filtering
+
+The goal is to *smooth* out the noise in order to entire actual patterns in the data. (Refer to image in book)
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(gridExtra)
+library(dslabs)
+data("polls_2008")
+
+qplot(day, margin, data = polls_2008)
+
+#If we try to fit a linear model to this data, we get a poor fit:
+linear_polls <- lm(margin ~ day, data = polls_2008)
+
+
+polls_2008 %>%
+  ggplot(aes(x=day, y= margin)) +
+    geom_point() +
+    geom_abline(intercept = linear_polls$coefficients[1], slope = linear_polls$coefficients[2], color = "red")
+
+# Note - not only is our data non-linear - this is also a case in which our residuals are correlated, which is common with time-series data (like this is), but violates one of the key assumptions of standard linear models.
+residuals <- augment(linear_polls, data = polls_2008)
+
+ggplot(residuals, aes(x= day, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red")
+
+```
+
+Splitting Up our Data
+========================================================
+  Vocab:
+* Bin size:
+  * window size
+  * bandwidth
+  * span
+
+```{r}
+tiny_breaks <- seq(0, 1, by = 0.05)
+small_breaks <- seq(0,1, by = 0.10)
+med_breaks <- seq(0, 1, by = 0.25)
+large_breaks <- c(0, 0.33, 0.66, 1)
+
+
+break_seq <- list(tiny_breaks, small_breaks, med_breaks, large_breaks)
+bandwidth_seq <- list(5,10, 25, 50)
+```
+
+
+Defining a Function to Test our Bins
+========
+```{r}
+smoothing_fun <- function(break_seq, bandwidth_seq, kernel){
+  
+for (i in 1:length(break_seq)) {
+  cats <- cut(polls_2008$day, breaks = quantile(polls_2008$day, probs = break_seq[[i]], na.include.lowest = TRUE))
+  
+  polls_2008$categories <- cats
+  
+  xintercepts = quantile(polls_2008$day, probs = break_seq[[i]], na.include.lowest = TRUE)
+  
+  polls_2008 <- polls_2008 %>%
+    group_by(categories) %>%
+    #Use mutate instead of summarize if you want to get your grouped rows back later
+    mutate(mean = mean(margin)) %>%
+    ungroup()
+  
+  plot <- ggplot(polls_2008, aes(x = day, y = margin, group = categories)) +
+    geom_point() +
+    geom_line(aes(y = mean)) +
+    geom_vline(xintercept = xintercepts) +
+    ggtitle(paste("Bins:", length(break_seq[[i]])))
+  
+  fit <- ksmooth(polls_2008$day, polls_2008$margin, kernel = kernel, bandwidth = bandwidth_seq[[i]])
+  
+  plot2 <- polls_2008 %>% mutate(smooth = fit$y) %>%
+  ggplot(aes(day, margin)) + 
+    geom_point() +
+    geom_line(aes(y=smooth), color= "red") +
+    geom_vline(xintercept = xintercepts) +
+    ggtitle(paste("N:", bandwidth_seq[[i]]))
+  
+  product <- grid.arrange(plot, plot2, ncol=1)
+  print(product)
+}
+}
+# Our crude approach isn't quite as refined, because we use a number of separate windows, rather than overlapping moving windows, to get our values, but you can see the similarity in processes. 
+
+smoothing_fun(break_seq = break_seq, bandwidth_seq = bandwidth_seq, kernel = "normal")
+
+```
+
+Kernel
+=======
+The word 'kernel' can have really complex, shifting definitions regarding machine learning algorithms. Here, it just means the distribution function that we use to weight the importance of each data point in our moving window. "Box" means a box-shaped, or uniform distribution, while "normal" means that points are weighted according to a normal distribution (the center points affect the outcome more than the points on the edges). Using a normal kernel makes ksmooth smoother - it evens out the edges.
+
+KNN Regression
+=======================
+KNN, or K-Nearest-Neighbor regression is another (very) similar approach to K 'smoothing'. KNN/K Smoothing techniques are considered to be *non-parametric*, meaning that they don't rely on some calculated parameter (like intercept, or slope, to build a line across the data. They just build it as they go along.)
+```{r}
+neighbors <- list(5, 10, 15, 20, 25)
+
+knn_model <- nearest_neighbor() %>%
+    set_engine("kknn") %>%
+    set_mode("regression")
+
+for (n in neighbors){
+  knn_model <- knn_model %>% update(neighbors = n)
+
+  fit_knn <- fit(knn_model, margin ~ day, data = polls_2008)
+
+plot <- polls_2008 %>%
+  mutate(preds = predict(fit_knn, polls_2008)$.pred) %>%
+  ggplot(aes(x = day, y = preds)) +
+    geom_point(aes(y = margin)) +
+    geom_line() +
+    ggtitle(paste(n, "Neighbors"))
+
+print(plot)
+}
+```
+
+LOESS
+======
+LOESS = *Local weighted regression*, or 
+LOESS also uses the 'moving window' approach, but it tries to develop a linear model within each moving window, rather than relying on a constant (like mean) - this can sometimes give us a less erratic result, and lets us use larger windows. It's also *parametric*, as opposed to nonparametric.
+```{r}
+
+#Note, while the KNN/KSmooth options use a constant N, the LOESS method uses a proportion - so a span weight 
+weights <- c(0.07, 0.15, 0.3, 0.5)
+
+for (i in 1:length(break_seq)) {
+  cats <- cut(polls_2008$day, breaks = quantile(polls_2008$day, probs = break_seq[[i]], na.include.lowest = TRUE))
+  
+  polls_2008$categories <- cats
+  
+  xintercepts = quantile(polls_2008$day, probs = break_seq[[i]], na.include.lowest = TRUE)
+  
+  polls_2008 <- polls_2008 %>%
+    group_by(categories) %>%
+    #Use mutate instead of summarize if you want to get your grouped rows back later
+    mutate(mean = mean(margin)) %>%
+    ungroup()
+  
+plot <- ggplot(polls_2008, aes(x = day, y = margin, group = categories)) +
+    geom_point() +
+    geom_smooth(method = lm, se = FALSE) +
+    geom_vline(xintercept = xintercepts) +
+    ggtitle(paste("Bins:", length(break_seq[[i]])-1))
+  
+  
+#degree refers to the number of polynomials we want to include (as parameters). 1 is generally less flexible than 2 (the max option), and usually better, given the flexibility that this approach already has.
+  fit <- loess(margin ~ day, degree=1, span = weights[[i]], data = polls_2008)
+  
+  plot2 <- polls_2008 %>% mutate(smooth = fit$fitted) %>%
+  ggplot(aes(day, margin)) + 
+    geom_point() +
+    geom_line(aes(y=smooth), color= "red") +
+    geom_vline(xintercept = xintercepts) +
+    ggtitle(paste("Span:", weights[[i]]))
+  
+  product <- grid.arrange(plot, plot2, ncol=1)
+  print(product)
+}
+```
+
+Comparing KNN/K-Smooth to LOESS
+========
+```{r}
+#Using default neighbors/span for both models
+knn_model <- knn_model %>% update(neighbors = 40, weight_func = "gaussian")
+fit_knn <- fit(knn_model, margin ~ day, data = polls_2008)
+fit_loess <- loess(margin ~ day, degree=1, data = polls_2008)
+
+polls_2008 %>%
+  #The loess fit automatically includes predictions, while the KNN fit doesn't. Little nuances that you have to check the documentation for.
+  mutate(knn_smooth = predict(fit_knn, polls_2008)$.pred,
+         loess_smooth = fit_loess$fitted) %>%
+  ggplot(aes(x=day, y = margin)) +
+    geom_point() +
+    geom_line(aes(y = loess_smooth, color = "LOESS")) +
+    geom_line(aes(y = knn_smooth, color = "KNN"))
+    
+
+```
+Let's play with our specs for our KNN and LOESS curves. What's going to happen? What if we change the weight_func (kernel) for our KNN algorithm?
+
+What does any of this have to do with machine learning/prediction?
+=======
+These techniques might seem to be more suited toward describing complex data than predicting new data, but if we're careful about how flexible we allow our models to be, they can be used to identify consistent trends that may be applied to new data.
+
+Rather than guessing at the best *hyperparameter* to use for our smoothing models, we can use iteration to test!
+
+LOESS Hyperparameter Tuning
+======
+```{r}
+poll_split <- initial_split(polls_2008, prop=0.6)
+poll_train <- training(poll_split)
+poll_test <- testing(poll_split)
+# Training and testing our LOESS models
+
+loess_tune_fun <- function(hyperparameters){
+  empty_tibble <- tibble(.metric = numeric(), .estimator = numeric(), .estimate = numeric())
+  
+for(h in hyperparameters){
+  fit_loess <- loess(margin ~ day, degree=1, span=h, data = poll_train)
+  
+  poll_test$preds <- predict(fit_loess, newdata = testing(poll_split))
+  
+  output <- poll_test %>%
+    metrics(truth = margin, estimate = preds)
+  
+ output <-  output %>%
+   #NOTE: You can use the .before or .after arguments to specifically place a new column somewhere in your data
+    mutate(hyperparameter = h, .before = ".metric")
+ 
+  empty_tibble <- rbind(empty_tibble, output)
+}
+  #The tibble shouldn't be empty anymore
+  empty_tibble <- empty_tibble %>% select(-.estimator)
+  return(empty_tibble)
+}
+```
+
+Applying our Function
+```{r}
+loess_hyperparameters <- seq(0.05, 0.95, by = 0.01)
+
+loess_models <- loess_tune_fun(loess_hyperparameters)
+
+R_sq <- loess_models %>%
+  filter(.metric == "rsq") %>%
+  ggplot(aes(x = hyperparameter, y = .estimate)) +
+    geom_line() +
+    ggtitle("R-Squared")
+
+errors <- loess_models %>%
+  filter(.metric != "rsq") %>%
+  ggplot(aes(x = hyperparameter, y = .estimate)) +
+    geom_line() +
+    facet_grid(.~.metric)
+
+grid.arrange(R_sq, errors, ncol= 1, top="LOESS Hyperparameter Tuning")
+
+```
+
+KNN Hyperparameter Tuning
+=========
+```{r}
+
+#The KNN model is compatible with the tidymodels workflow, so it's easier to make cleaner code for.
+KNN_wflow <- workflow() %>%
+  add_formula(margin ~ day)
+ 
+
+KNN_tune_fun <- function(hyperparameters, weight_function = NULL){
+  empty_tibble <- tibble(.metric = numeric(), .estimator = numeric(), .estimate = numeric())
+  
+for (h in hyperparameters){
+  knn_model <- knn_model %>% update(neighbors = h, weight_func = weight_function)
+  
+  model_metrics <- KNN_wflow %>%
+    add_model(knn_model) %>%
+    fit(poll_train) %>%
+    predict(poll_test) %>%
+    bind_cols(poll_test) %>%
+    metrics(truth = margin, estimate = .pred) %>%   
+    mutate(hyperparameter = h, .before =.metric)
+  
+  empty_tibble <- rbind(empty_tibble, model_metrics)
+}
+  
+  empty_tibble <- empty_tibble %>% select(-.estimator)
+  
+  return(empty_tibble)
+}
+```
+
+Applying our Function
+```{r}
+knn_hyperparameters <- seq(5,40, by=1)
+#First, try it with no specific weighting function (kernel), then try 'gaussian', 'triweight', and 'optimal'.
+KNN_models <- KNN_tune_fun(knn_hyperparameters, weight_function = "gaussian")
+
+KNN_models %>%
+  filter(.metric == "rsq") %>%
+  arrange(desc(.estimate))
+
+R_sq <- KNN_models %>%
+  filter(.metric == "rsq") %>%
+  ggplot(aes(x = hyperparameter, y = .estimate)) +
+    geom_line() +
+    ggtitle("R-Squared")
+
+errors <- KNN_models %>%
+  filter(.metric != "rsq") %>%
+  ggplot(aes(x = hyperparameter, y = .estimate)) +
+    geom_line() +
+    facet_grid(.~.metric)
+
+grid.arrange(R_sq, errors, ncol= 1, top = "KNN Hyperparameter Tuning")
+
+```
+
+Plotting Some Results
+========
+```{r}
+#Let's look at a KNN value of 6, 11, and 16.
+knn_model <- knn_model %>% update(neighbors = 30)
+fit_knn <- fit(knn_model, margin ~ day, data = polls_2008)
+
+#And let's look at a LOESS span of 0.2, and 0.35.
+fit_loess <- loess(margin ~ day, degree=1, span = 0.2, data = polls_2008)
+
+poll_test %>%
+  #The loess fit automatically includes predictions, while the KNN fit doesn't. Little nuances that you have to check the documentation for.
+  mutate(knn_smooth = predict(fit_knn, poll_test)$.pred,
+         loess_smooth = predict(fit_loess, poll_test)) %>%
+  ggplot(aes(x=day, y = margin)) +
+    geom_point() +
+    geom_line(aes(y = loess_smooth, color = "LOESS")) +
+    geom_line(aes(y = knn_smooth, color = "KNN"))
+    
+
+```
+
+

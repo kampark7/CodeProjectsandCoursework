@@ -1,0 +1,211 @@
+Lecture 1 - Week 12
+========================================================
+
+autosize: true
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(palmerpenguins)
+library(discrim)
+library(splines)
+library(gridExtra)
+```
+
+Some Stuff we Didn't Cover Last Time
+========================================================
+See code from Thursday class
+
+Regression (Continuous Variables) Measures of Fit
+======================
+Regression (Continuous Variables):
+*R-Squared* - The percentage of variation in the data that our model is able to explain.
+
+*MSE (Mean Squared Error) or RMSE (Root Mean Squared Error)* - Averages the squared distance of each point from the model's predictions (our line)
+
+*MAE (Mean Absolute Error) * - Averages the absolute value of the distance of each point from the model's predictions (our line) - less sensitive to outliers than MSE.
+
+
+Classification (Categorical Variables) Measures of Fit
+=========
+*Confusion Matrix/Contingency Table* - A table that compares the model's guesses with reality, in the form of True Positives, False Positives, True Negatives, and False Negatives, for each possible class.
+
+* False Positives are also known as *Type 1 Errors* - your model guesses that someone has an illness, for example, when they don't.
+
+* False Negatives are also known as *Type 2 Errors* - your model guesses that someone does NOT have an illness, for example, when they do.
+
+```{r}
+peng_split <- initial_split(penguins)
+peng_train <- training(peng_split)
+peng_test <- testing(peng_split)
+
+NB_mod <- naive_Bayes() %>%
+  set_engine("naivebayes")
+
+NB_workflow <- workflow() %>%
+  add_formula(sex ~ bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g) %>%
+  add_model(NB_mod)
+
+peng_spec_fit <- fit(NB_workflow, data = peng_train)
+
+peng_test <- peng_test %>% filter(complete.cases(.))
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  conf_mat(truth = sex, estimate = .pred_class)
+```
+
+A bunch of vocabulary stems from the confusion matrix (Pull up wikipedia visual)
+=========
+The basics:
+*True Positive Rate (TPR)/Recall/Sensitivity* - True Positives/Actual Positives - Measures your model's ability to accurately guess when a class is true.
+```{r}
+38/41
+```
+
+*True Negative Rate(TNR)/Specificity* - True Negatives/Actual Negatives - Measures your model's ability to to accurately guess when a class is false.
+```{r}
+40/42
+```
+*False Positive Rate (FPR)/Fall-out* - False positive/Actual Negatives - Measures your model's likelihood of raising a false alarm, or incorrectly guessing a positive from a negative.
+```{r}
+3/42
+```
+*False Negative Rate (FNR)/Miss Rate* - False Negatives/Actual Positives - Measures your model's ability to missing something, or incorrectly guessing a negative from a positive.
+```{r}
+2/41
+```
+*Precision* - True Positives/Predicted Positives - What ratio of the selected positives are reliable?
+```{r}
+40/41
+```
+
+The summary stats:
+*Positive likelihood ratio* - True Positive Rate/False Positive Rate - Summarizes how likely your model is to positively guess a class.
+*Negative likelihood ratio* - False Negative Rate/True Negative Rate - Summarizes how likely your model is to negatively guess a class (or to accurately predict that a point does not belong to a particular class)
+*F1 Score* - 2 * (Precision*Recall)/(Precision + Recall) - The "harmonic mean" of precision and recall. Often used to compare classifier models - an F1 score of 1 indicates a perfect model. (Pull up Wikipedia visual)
+
+A Multinomial Confusion Matrix
+=========
+```{r}
+NB_workflow2 <- workflow() %>%
+  add_formula(species ~ bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g) %>%
+  add_model(NB_mod)
+
+peng_spec_fit <- fit(NB_workflow2, data = peng_train)
+
+peng_test <- peng_test %>% filter(complete.cases(.))
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  conf_mat(truth = species, estimate = .pred_class)
+```
+
+
+The Tricky Part
+=======
+As we've seen - the *TRAINING* MSE, or MAE, or Precision, or F1 Score or whatever, of a model is *not the same* as the *TEST* MSE, or MAE, or Precision, or F1 Score or whatever.
+
+Having a high measure of fit on your training data is not proof that you will have a high measure of fit on your testing data. In fact, the better your training measure of fit, the worse your testing measure of fit is likely to be. This is because of the *BIAS/VARIANCE TRADEOFF*.
+
+*VARIANCE* - How much your predictions would change if you trained your model on new data. In other words, how well your model fits your *training* data, or how closely fitted it is to that data. A model with high variance would change significantly if the training data changed even slightly.
+
+Illustrating Variance
+=======
+```{r}
+lin_mod <- linear_reg() %>%
+  set_engine("lm")
+
+var_display <- function(spline_df){
+  # Sample n is a dpylr function designed to make sampling rows from dataframes easier.
+  peng_sample <- sample_n(penguins, 200, replace = TRUE)
+  peng_sample2 <- sample_n(penguins, 200, replace = TRUE)
+
+  spline_recipe <- recipe(bill_length_mm ~ bill_depth_mm, data = peng_sample) %>%
+                    step_ns(bill_depth_mm, deg_free = spline_df)
+
+  lin_workflow <- workflow() %>%
+    add_recipe(spline_recipe) %>%
+    add_model(lin_mod)
+
+  peng_sample <- peng_sample %>% filter(complete.cases(.))
+  peng_sample2 <- peng_sample2 %>% filter(complete.cases(.))
+
+  peng_fit <- fit(lin_workflow, data = peng_sample)
+  peng_fit2 <- fit(lin_workflow, data = peng_sample2)
+
+  peng_sample <- peng_fit %>%
+    predict(peng_sample) %>%
+    bind_cols(peng_sample)
+
+  peng_sample <- peng_fit2 %>%
+    predict(peng_sample) %>%
+    bind_cols(peng_sample)
+
+  ggplot(peng_sample) +
+    geom_line(aes(x=bill_depth_mm, y = .pred...1), color="red") +
+    geom_line(aes(x=bill_depth_mm, y = .pred...2), color = "blue") +
+    ggtitle(paste(spline_df, "Degrees of Freedom"))
+}
+#Displaying model comparisons with different levels of flexibility.
+grid.arrange(var_display(40), var_display(20), var_display(5), var_display(2))
+
+```
+Summarizing Variance
+======
+In sum, a model with excessively high variance is prone to overfitting to a particular set of data, making it less useful for capturing trends across datasets. We want a low variance.
+
+However, our variance can never be zero, because our model will never be able to perfectly account for every little variation in both our training and our test dataset. Pushing our variance to be low influences us to avoid too much flexibility in our models.
+
+Talking about Bias
+=======
+*BIAS* - The complexity that a model is not able to account for - How well your model accommodates new *test* data. Remember, that all models are approximations of reality - bias error occurs when our model is too simple to account for more complex variations in the data. For example, a straight line fitted over a curved dataset has very high bias, because it doesn't account for that flexibility in the real data. We want low bias.
+
+However, our bias can never be zero, because, again, models have to approximate to be useful. Pushing our bias to be low influences us to add enough flexibility in our models to capture real trends in the data.
+
+The Bias-Variance Trade-Off
+=======
+As noted, we want both bias and variance to be low. The problem is that as one goes down, the other tends to go up. So we are really shooting for that ideal spot where both are as low as possible.
+```{r}
+MAE_calc <- function(splines){
+  MAE_vec <- vector()
+  for (spline_df in splines){
+  # Sample n is a dpylr function designed to make sampling rows from dataframes easier.
+  peng_split <- initial_split(penguins)
+  peng_train <- training(peng_split)
+  peng_test <- testing(peng_split)
+
+  spline_recipe <- recipe(bill_length_mm ~ bill_depth_mm, data = peng_split) %>%
+                    step_ns(bill_depth_mm, deg_free = spline_df)
+
+  lin_workflow <- workflow() %>%
+    add_recipe(spline_recipe) %>%
+    add_model(lin_mod)
+
+  peng_train <- peng_train %>% filter(complete.cases(.))
+  peng_test <- peng_test %>% filter(complete.cases(.))
+
+  peng_fit <- fit(lin_workflow, data = peng_train)
+
+  MAE <- peng_fit %>%
+    predict(peng_test) %>%
+    bind_cols(peng_test) %>%
+    mae(truth = bill_length_mm, estimate = .pred) %>%
+    pull(.estimate)
+  MAE_vec <- append(MAE_vec, MAE)
+  }
+  return(MAE_vec)
+}
+
+```
+
+```{r}
+#A nice thing about tibble, you can create a column and then immediately use it to build another column.
+flex_table <- tibble(flexibility = seq(1, 30, by = 1), MAE = MAE_calc(flexibility))
+ggplot(flex_table, aes(x= flexibility, y = MAE)) +
+  geom_smooth(se=F) +
+  geom_vline(xintercept = 9, color = "red")
+```
+

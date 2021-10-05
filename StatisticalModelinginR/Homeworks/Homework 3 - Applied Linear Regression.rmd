@@ -1,0 +1,104 @@
+---
+title: 'Homework #3'
+output: html_document
+author: "Kamryn Parker"
+---
+
+## Homework \#3 - Applied Linear Regression
+
+### Question 1: This data set involves the use of simple linear regression on the Auto data set from the ISLR library.
+
+```{r}
+library(ISLR)
+```
+
+1a. Use the lm() function to perform a simple linear regression with mpg as the response (y) and horsepower as the predictor (x) . Use the summary() function to print the results.
+
+```{r}
+lm.fit <- lm(mpg ~ horsepower, data = Auto)
+summary(lm.fit)
+```
+```{r}
+mpg_guess <- -0.157845*98 + 39.935861
+mpg_guess
+```
+
+*Comment on the output:*
+
+*i. Is there a relationship between the predictor and the response?*
+Yes there is a relationship between these two values becasue the p-value is less than 0.05 and significantly small.
+*ii. How strong is the relationship between the predictor and the response?*
+I would say the relationship is fairly strong considering the significance is so high on the model. The model summary shows that the p-value has thre '***' so it has a high significance to each other.
+*iii. Is the relationship between the predictor and the response positive or negative?*
+It is a negative relationship becasue as the horsepower increases the mpg decreases. This makes sense since the faster you are going the more gas you will consume leading to a lower gas mileage. 
+*iv. What is the predicted mpg associated with a horsepower of 98?*
+24.46705
+
+1b. Plot the response and the predictor. Use the abline() function in ggplot to display the least squares regression line.
+
+```{r}
+library(ggplot2)
+
+ggplot(Auto, aes(horsepower, mpg)) + 
+  geom_point() +
+  geom_abline(intercept = 39.935861, slope = -0.157845, color = 'red') + 
+  xlab("Horsepower") +
+  ylab('Miles Per Gallon') +
+  ggtitle("Horsepower vs Miles Per Gallon")
+```
+
+1c. Use the plot()function to produce diagnostic plots of the least squares regression fit. Comment on any problems you see with the fit (leverage, outliers, residual patterns, normality issues in the QQ plot, etc).
+
+There seems to be an even spread of values in the Scale-Location plot but the line isn't straight so that could assume there isn't an equal variance among the data. Also there isn't a lot of data unitl you get to the 15 mark on the plot. The most notable outlier from the Residuals vs Leverage plot is the car 117. Otherwise there aren't too many significant outliers. The Residuals vs. Fitted plot is a little concerning considering the data is follow an almost parabolic shape with the line created when it should be more linear. There would need to be more analysis on outliers and other patterns but this could mean there is a slight non-linear relationship between the data. So, potentially a multi-nom fit would be better. 
+```{r}
+plot(lm.fit)
+```
+
+
+### Question 2: This question also uses the Auto data set.
+
+2a. Produce a scatterplot matrix which includes all of the variables in the data set. *(You can use the pairs() function to do this. See p. 50 of the ISLR book for an example)*
+
+```{r}
+pairs(Auto[,1:8], col = Auto$cylinders)
+```
+
+2b. Compute the matrix of correlations between the variables using the function cor(). You will need to exclude the name variable, which is categorical.
+
+```{r}
+cor(Auto[,1:8])
+```
+
+2c. Use the lm()function to perform a multiple linear regression with mpg as the response (y) and all other variables **except name** as the predictors. Use the summary()function to print the results.
+
+```{r}
+library(MASS)
+lm.fit <- lm(mpg ~ cylinders + displacement + horsepower + weight + acceleration + year + origin, data = Auto)
+summary(lm.fit)
+```
+
+Comment on the output:
+
+*i. Is there a relationship between the predictors and the response?*
+There is a pretty significant relationship between some of the predictors and the response variable.
+*ii. Which predictors appear to have a statistically significant relationship to the response?*
+The mose significant predictors are the year, weightm origin, and slightly displacement.
+*iii. What does the coefficient for the year variable suggest?*
+One thing that the year variabel suggests is that as newer cars come out they become more efficient leading to less gas use.
+
+2d. Use the plot() function to produce diagnostic plots of the linear regression fit. Comment on any problems you see with the fit. Do the residual plots suggest any unusually large outliers? Does the leverage plot identify any observations with unusually high leverage?
+
+Yes there is a single observation with car number 14 being the outlier. They don't have a high cook's distance score so they aren't as extremleyu influential as it would be if it were but it is a strong outlier nonetheless. The residual plot isn't super straight and there are a few high residuals but I would say nothing too concerning with data this large.
+
+```{r}
+plot(lm.fit)
+```
+
+2e. Use the \* symbol to fit linear regression models with interaction effects. Do any interactions appear to be statistically significant?
+
+Multipling year and weight (the two most significant vlaues) had a statiscially significant result for our data!
+
+```{r}
+lm.fit <- lm(mpg ~ year*weight, data = Auto)
+summary(lm.fit)
+```

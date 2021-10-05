@@ -1,0 +1,251 @@
+Lecture 1 - Week 11
+========================================================
+autosize: true
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(palmerpenguins)
+```
+
+Review
+========================================================
+Homework 8
+```{r}
+#Marginal probability vs conditional probability vs joint probability
+suits <- c("Diamonds", "Clubs", "Hearts", "Spades")
+numbers <- c("Ace", "Deuce", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King")
+deck <- expand.grid(number=numbers, suit=suits)
+
+# Marginal probability of Ace:
+sum(deck$number == "Ace") / nrow(deck)
+
+# Conditional probability of Ace, given that we know we have a card from the Diamonds suit
+deck %>%
+  filter(suit == "Diamonds") %>%
+  mutate(count = n(), prop = count/sum(count))
+
+# Joint probability of Ace AND Diamonds, with neither case known in advance:
+deck %>%
+  mutate(count = n(), prop = count/sum(count)) %>%
+  filter(suit == "Diamonds")
+
+```
+
+Monty Hall Code
+```{r}
+#Sets the number of times we want to replicate our function
+B <- 10000
+
+strategy <- "switch"
+
+monty_hall(strategy = strategy)
+
+#Defines our function, and the argument that it will take
+monty_hall <- function(strategy){
+  #I'm defining an argument inside the function (bad idea, clearly, but it lets us visualize what the function does)
+  # Creates a list of numbers, 1 through 3, to represent "doors"
+  (doors <- as.character(1:3))
+  # Creates a list of randomly arranged prizes to go with each door (re-run)
+  (prize <- sample(c("car", "goat", "goat")))
+  # Uses the index of prizes where the prize equals car to find the corresponding door.
+  (prize_door <- doors[prize == "car"])
+  # Randomly assigns my pick from the possible doors
+  (my_pick  <- sample(doors, 1))
+  #Randomly assigns a door that is NOT my pick, and that is NOT the prize door, for the game show host to open.
+  (show <- sample(doors[!doors %in% c(my_pick, prize_door)],1))
+  # Stick equals the door that you originally picked
+  (stick <- my_pick)
+  # Checks if the door you stuck with was really the prize door
+  (stick == prize_door)
+  # Switch equals the door that is NOT the door that the game show host opened, and is NOT the door that you originally picked.
+  (switch <- doors[!doors%in%c(my_pick, show)])
+  # If the chosen strategy is to stick, then assign that to your choice, if not, assign switch.
+  (choice <- ifelse(strategy == "stick", stick, switch))
+  # Check if your choice was the winning door.
+  (choice == prize_door)
+}
+
+stick <- replicate(B, monty_hall("stick"))
+mean(stick)
+
+switch <- replicate(B, monty_hall("switch"))
+mean(switch)
+```
+
+Why is it better to switch than stick? Because Monty Hall, the game show host, knows which door the prize is behind! He will never show you the prize, so he has reduced some of the uncertainty in our simulation. (This puzzle has confused many, many statisticians - highlighting the value of being able to simulate something when it is confusing!)
+
+Homework 9
+========
+The conditional probability of a Chinstrap having a flipper length of 196 is higher than the conditional probability of an Adelie penguin having a flipper length of 196. (In short, Chinstraps are more likely to have flippers of that length than Adelies). So why does a Bayesian classification formula expect a penguin with a flipper length of 196 ~65% likely to be Adelie?
+
+Answer: Marginal probabilities!
+
+Why do we have to take the negative absolute value of our Z-score to calculate a p-value?
+
+Answer: It's actually easier to use the left-hand tail multiplied by two. The other option would be to use 1 minus the z-score on the right hand tail, multiplied by two.
+
+Exam
+========================================================
+It's better to use predictions to plot a linear model than to use geom_abline. Here's why:
+```{r}
+library(NHANES)
+data(NHANES)
+
+(example_mod <- lm(SexNumPartYear ~ Age, data = NHANES))
+
+#I'm going to show an easier way to add predictions than I showed before (no need for data_grid())
+NHANES <- NHANES %>%
+  mutate(preds = predict(example_mod, NHANES))
+
+NHANES %>%
+  filter(Age >= 18 & Age <= 60) %>%
+    ggplot(aes(x = Age, y = SexNumPartYear)) +
+      geom_point() +
+      geom_abline(intercept = 2.35, slope = -0.026, color = "red") +
+      geom_line(aes(x = Age, y = preds), color = "blue") +
+      scale_y_continuous(trans = "log2")
+
+#geom_abline doesn't adjust for the scale transformation, and also doesn't recognize the limits of our data.
+```
+
+Bootstrapping
+========
+Why doesn't bootstrapping rely on an assumption of normality? (Or exponentiality, or anything else)?
+
+Parametric vs Non-Parametric - Some Examples
+========
+*Parametric*
+Linear models
+Confidence interval/p-values
+*Non-Parametric*
+KNN-Models
+Bootstrapping (sometimes)
+
+Election Forecasting
+========
+Common election prediction models work (roughly speaking) by looking at poll averages, considering them to be part of a probability distribution, and then using bootstraps to test out a bunch of different outcomes (say, 50,000, like fivethirtyeight does), and then looks at the distribution of that set of outcomes to predict how likely it is that any one candidate will win (in 35,000 of 50,000 scenarios, candidate x won, for example.) There are multiple hierarchies in this kind of model.
+
+This approach generally relies on a Bayesian approach, which can be quite powerful/useful - but there are some limitations to that:
+1. Our model is only as strong as our priors
+2. How do we verify that our model was actually right, if our model is designed to produce an array of likelihoods?
+
+Any other questions?
+========================================================
+Let me know if I can adjust my teaching style/assignments to be more useful.
+
+Binary Classification
+========
+By a long shot, the most popular method for binary classification is logistic regression (logit). Despite the 'regression' label (called that because it predicts a continuous odds ratio), it is actually a classifier approach.
+```{r}
+peng_split <- initial_split(penguins)
+peng_train <- training(peng_split)
+peng_test <- testing(peng_split)
+
+# Buildng a Logistic Regression Model
+log_model <- logistic_reg() %>%
+  set_engine("glm")
+
+log_workflow <- workflow() %>%
+  add_formula(sex ~ .) %>%
+  add_model(log_model)
+
+peng_sex_fit <- fit(log_workflow, data = peng_train)
+
+peng_sex_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+    ggplot(aes(x=species, y = body_mass_g, color=.pred_class)) +
+      geom_point()
+
+peng_sex_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  metrics(truth = sex, estimate = .pred_class)
+
+peng_sex_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  filter(complete.cases(.pred_class, body_mass_g, species, sex)) %>%
+  mutate(pred_error = ifelse(.pred_class == sex, sex, "Wrong Guess")) %>%
+    ggplot(aes(x = species, y = body_mass_g, color = pred_error)) +
+      geom_point()
+
+```
+
+Multinomial Classification (More than two Classes)
+========
+Logistic regression doesn't work very well for more than two classes.
+
+Linear discriminant analysis (which is closely built onto Bayesian classification) attempts to put a linear 'decision boundary' across two (or more) distributions, to attempt to separate those distributions so that the bulk of each class falls on the correct side of the discriminating line. (Show plots on p. 143)
+
+```{r}
+library(discrim)
+#Building an LDA model
+LDA_mod <- discrim_linear() %>%
+  set_engine("MASS")
+
+LDA_workflow <- workflow() %>%
+  add_formula(species ~ bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g) %>%
+  add_model(LDA_mod)
+
+peng_spec_fit <- fit(LDA_workflow, data = peng_train)
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+    ggplot(aes(x=species, y = body_mass_g, color=.pred_class)) +
+      geom_point()
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  metrics(truth = species, estimate = .pred_class)
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  filter(complete.cases(.)) %>%
+  mutate(pred_error = ifelse(.pred_class == species, species, "Wrong Guess"), pred_error = as.factor(pred_error)) %>%
+    ggplot(aes(x = body_mass_g, y = flipper_length_mm, color = pred_error)) +
+      geom_point()
+
+```
+
+Non-Parametric Classification (KNN)
+========
+```{r}
+KNN_mod <- nearest_neighbor() %>%
+  set_engine("kknn") %>%
+  #This time, we set the mode to classification instead of regression
+  set_mode("classification")
+
+KNN_workflow <- workflow() %>%
+  add_formula(species ~ bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g) %>%
+  add_model(KNN_mod)
+
+peng_spec_fit <- fit(KNN_workflow, data = peng_train)
+
+peng_test <- peng_test %>% filter(complete.cases(.))
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+    ggplot(aes(x=species, y = body_mass_g, color=.pred_class)) +
+      geom_point()
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  metrics(truth = species, estimate = .pred_class)
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  filter(complete.cases(.)) %>%
+  mutate(pred_error = ifelse(.pred_class == species, species, "Wrong Guess"), pred_error = as.factor(pred_error)) %>%
+    ggplot(aes(x = body_mass_g, y = flipper_length_mm, color = pred_error)) +
+      geom_point()
+```
+
+Note: KNN can be used as a pre-processing step, to impute NAs by inferring that rows with NA values are more likely to belong to groups with other similar values.

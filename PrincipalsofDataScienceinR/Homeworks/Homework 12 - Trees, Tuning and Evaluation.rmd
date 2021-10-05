@@ -1,0 +1,238 @@
+---
+title: "Homework 12: Decision Trees and Evaluation"
+output: html_notebook
+author: "Kamryn Parker"
+---
+
+You are allowed to use any dataset that you want to complete this homework. For some examples, you can use the data() function with no arguments to pull up R's built-in datasets. 
+
+1. Split your data into a train and test dataset.
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(palmerpenguins)
+
+df <- penguins %>% filter(complete.cases(.)) #only using complete cases in the data set to make it easier to train
+
+df_split <- initial_split(df)
+df_train <- training(df_split)
+df_test <- testing(df_split)
+
+df
+```
+
+2. Train a decision tree (a single decision tree, not a bagged or random forest model) on your training dataset to predict a variable (it can be either classification or regression) with any combination of other variables.
+```{r}
+library(rpart)
+library(rpart.plot)
+
+dec_tree_model <- decision_tree(tree_depth = 5) %>% #setting tree depth after tuning tree
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+dec_tree_fit <- workflow() %>%
+  add_formula(species ~ island + bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g + body_mass_g + sex) %>% #choosing a good amount of variables to have the tree split with
+  add_model(dec_tree_model) %>%
+  fit(df_train) %>%
+  pull_workflow_fit()
+
+rpart.plot(dec_tree_fit$fit)
+```
+
+3. Test your trained decision tree on your test data. If it is a classification model, compare the truth column and the estimate column to get the accuracy, kappa, and ROC-AUC metrics. If it is a regression model, get the MAE, RMSE, and R-squared metrics.
+```{r}
+dec_tree_fit %>%
+  predict(df_test) %>%
+  bind_cols(df_test) %>%
+  metrics(truth = species, estimate = .pred_class)
+
+dec_tree_fit %>%
+  predict(df_test) %>% #predicts using test data
+  bind_cols(df_test) %>% #Binding those columns to the decsiion tree fit
+  conf_mat(truth = species, estimate = .pred_class) #Mkaes a confusion matrix as Work as the truth from our prediction
+
+precision = (38 + 11 + 29) / (37 + 12 + 29 + 3) #precision calculating. I didn't know how else to extract the confusion matrix false positives without manually doing it
+precision
+```
+
+4. Based on your metrics, is your decision tree any good?
+>
+Yes, based on these metrics there are very small false positive rates and the model has a high level of accuracy for calculating what species of penguin there are.
+>
+
+5. Now build either a random forest or a bagged decision tree model with the same formula as your single decision tree, and set up one or two of the model's hyperparameters to be tuned.
+```{r}
+library(randomForest)
+library(vip)
+
+rf_model <- rand_forest(trees = 100, mtry = 5) %>% 
+  set_mode("classification") %>%
+  set_engine("randomForest", importance = TRUE)
+
+rf_train <- df_train %>%
+  select(c(species, island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, body_mass_g, sex)) %>% 
+  filter(complete.cases(.))
+
+rf_test <- df_test %>% 
+   select(c(species, island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, body_mass_g, sex)) %>%
+  filter(complete.cases(.))
+
+#create a workflow formula to include in our model
+rf_wf <- workflow() %>%
+  add_formula(species ~ island + bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g + body_mass_g + sex) %>%
+  add_model(rf_model)
+
+#fit to the random forest model with the new workflow and training data
+rf_fit <- fit(rf_wf, rf_train)
+
+rf_fit %>%
+  predict(rf_test) %>%
+  bind_cols(rf_test) %>%
+  metrics(truth = species, estimate = .pred_class) #accuracy of the model
+```
+
+6. Divide your *training* data up, either using v-folds or bootstraps.
+```{r}
+#using a v-fold as my intial split of training data
+(penguin_folds <- vfold_cv(df_train, v= 10, repeats = 1))
+```
+
+7. Plug your model and your training splits into a tuning grid (you choose how large, but don't make it too large, or it will take forever to train), so you can see how different combinations of your tuning hyperparameters impact your model.
+```{r}
+rf_tune <- workflow() %>%
+  add_model(rf_model) %>%
+  add_formula(species ~ island + bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g + body_mass_g + sex)
+
+tune_rf <- decision_tree(cost_complexity = tune(),
+                         tree_depth = tune()) %>%
+            set_engine("rpart") %>%
+            set_mode("classification")
+
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          levels = 5)
+
+#Creating workflow
+tree_wf <- workflow() %>%
+  add_model(tune_rf) %>%
+  add_formula(species ~ island + bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g + body_mass_g + sex)
+
+#Tuning the workflow formula with the resamples and  the hyperparameters from tree grid
+tree_tune <- tree_wf %>%
+               tune_grid(resamples = penguin_folds, grid = tree_grid)
+
+```
+
+8. Collect the metrics from your tuning grid and plug them into a plot (line or point grid) so you can see which hyperparameters had the best fit.
+```{r}
+#Collects metrics from the tuning crossfold to use for plots and accuracy/roc_auc
+tree_metrics <- tree_tune %>% collect_metrics()
+
+top_acc <- tree_metrics %>% filter(.metric == "accuracy") %>% slice_max(mean, n = 5)
+top_roc_auc <- tree_metrics %>% filter(.metric == "roc_auc") %>% slice_max(mean, n = 5)
+
+acc <- tree_metrics %>% 
+  filter(.metric == "accuracy") %>%
+  ggplot(aes(x = cost_complexity, y = tree_depth, color = mean)) +
+    geom_point() +
+    geom_point(data = top_5_acc, aes(x = cost_complexity, y = tree_depth), color = "red") +
+    scale_x_continuous(trans="log2") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+
+roc_auc <- tree_metrics %>% 
+  filter(.metric == "roc_auc") %>%
+  ggplot(aes(x = cost_complexity, y = tree_depth, color = mean)) +
+    geom_point() +
+    geom_point(data = top_5_roc_auc, aes(x = cost_complexity, y = tree_depth), color = "red") +
+    scale_x_continuous(trans="log2") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+library(gridExtra)
+grid.arrange(acc, roc_auc)
+
+#just to see the best accuracy and roc_auc scores for tree depth
+tree_tune %>%
+  select_best("roc_auc")
+```
+
+9. Split your training data again, using k-folds or bootstraps.
+```{r}
+#trying a bootstrap resample
+#had to make it small becasue it takes a super long time to run with the bootstrap parameters
+peng_boots <- bootstraps(df_train, times = 50)
+
+new_rf_tune <- workflow() %>%
+  add_model(rf_model) %>%
+  add_formula(species ~ island + bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g + body_mass_g + sex)
+
+new_tune_rf <- decision_tree(cost_complexity = tune(),
+                         tree_depth = tune()) %>%
+            set_engine("rpart") %>%
+            set_mode("classification")
+
+new_tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          levels = 5)
+
+#Creating workflow for the new tree workflow
+new_tree_wf <- workflow() %>%
+  add_model(new_tune_rf) %>%
+  add_formula(species ~ island + bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g + body_mass_g + sex)
+
+#Tuning again with resamples and hyperparameters
+new_tree_tune <- new_tree_wf %>%
+               tune_grid(resamples = peng_boots, grid = new_tree_grid)
+
+new_tree_tune %>%
+  select_best("roc_auc")
+```
+
+10. Using your "best" hyperparameters (you might have to make a judgement call), train your model again on your re-split training data.
+```{r}
+#creating a new random forest with the new parameters
+new_rf_model <- rand_forest(trees = 100, mtry = 4) %>% 
+  set_mode("classification") %>%
+  set_engine("randomForest", importance = TRUE)
+
+new_rf_train <- df_train %>%
+  select(c(species, island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, body_mass_g, sex)) %>%
+  filter(complete.cases(.))
+
+new_rf_test <- df_test %>% 
+   select(c(species, island, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g, body_mass_g, sex)) %>%
+  filter(complete.cases(.))
+
+#creating another workflow with the random forest model
+new_rf_wf <- workflow() %>%
+  add_formula(species ~ island + bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g + body_mass_g + sex) %>%
+  add_model(new_rf_model)
+
+#Make the fit to the random forest with our workflow formula and training data
+new_rf_fit <- fit(new_rf_wf, new_rf_train)
+```
+
+11. Collect the metrics from your training validation.
+```{r}
+new_rf_fit %>%
+  predict(new_rf_test) %>%
+  bind_cols(new_rf_test) %>%
+  metrics(truth = species, estimate = .pred_class) #accuracy of the model
+```
+
+12. Finally, test your tuned-and-trained aggregate model on your test data (which it should have never seen before), and get the metrics.
+```{r}
+#creates the last random forest calculation
+new_rf_wf %>%
+  last_fit(df_split) %>%
+  collect_metrics() #collect then display the metrics
+```
+
+13. Were your test metrics pretty close to your training evaluation metrics? How well did your bootstrap/cross-validation approach work to approximate the model's performance on totally new data?
+>
+Yes they were pretty much the same as the training evaluation metric so I think that means there is a good continuity between training and test data. 
+>
+
+14. Was your tuned aggregate model better, worse, or the same as your original single decision tree? Why do you think you got that outcome?
+>
+My tuned aggregate maodel was better than my regular single decision tree by about 4.8%. I think this makes sense because a random forest is able to try multiple outcomes with the same amount of depth. Then it is able to take the average accuracy of each model and use it to compile the accuracy we see. Then with the new hyperparameter tuning I did I changed the decesion tree depth and it increased the accuracy dramatically.
+>

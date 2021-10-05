@@ -1,0 +1,104 @@
+---
+title: "Project4"
+author: "Kamryn Parker"
+date: "4/27/2021"
+---
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(tidymodels)
+df_test_main <- read.csv("test.csv")
+df <- read.csv("train.csv")
+df
+summary(df)
+```
+
+```{r}
+#df_train <- subset(df_train, select = -c(Id,MSSubClass))
+df_split <- initial_split(df)
+df_train <- training(df_split)
+df_test <- testing(df_split)
+
+df_hold <- subset(df_train, select = c(LotFrontage, LotArea,OverallQual,OverallCond,YearBuilt,YearRemodAdd,MasVnrArea,BsmtFinSF2, BsmtUnfSF, TotalBsmtSF,X1stFlrSF,X2ndFlrSF,LowQualFinSF,GrLivArea,BsmtFullBath,BsmtHalfBath,FullBath,HalfBath,BedroomAbvGr,KitchenAbvGr,TotRmsAbvGrd,Fireplaces,GarageCars,GarageArea,WoodDeckSF,OpenPorchSF,EnclosedPorch,X3SsnPorch,ScreenPorch,PoolArea,MoSold,YrSold))
+df_hold <- scale(df_hold)
+df_hold <- as.data.frame(df_hold)
+df_y <- (subset(df_train, select = c(SalePrice)))
+df_train_scaled <- cbind(df_hold, df_y)
+
+df_train_scaled <- drop_na(df_train_scaled)
+df_train_scaled <- data.matrix(df_train_scaled)
+
+df_train_scaled <- na.omit(df_train_scaled)
+
+df_train_x <- df_train_scaled[,c(1:32)]
+
+df_train_x
+y <- df_train_scaled[,33]
+```
+
+
+```{r}
+df_test <- subset(df_train, select = -c(Id,MSSubClass))
+df_hold_test <- subset(df_test, select = c(LotFrontage, LotArea,OverallQual,OverallCond,YearBuilt,YearRemodAdd,MasVnrArea,BsmtFinSF2, BsmtUnfSF, TotalBsmtSF,X1stFlrSF,X2ndFlrSF,LowQualFinSF,GrLivArea,BsmtFullBath,BsmtHalfBath,FullBath,HalfBath,BedroomAbvGr,KitchenAbvGr,TotRmsAbvGrd,Fireplaces,GarageCars,GarageArea,WoodDeckSF,OpenPorchSF,EnclosedPorch,X3SsnPorch,ScreenPorch,PoolArea,MoSold,YrSold))
+df_hold_test <- scale(df_hold_test)
+df_hold_test <- as.data.frame(df_hold_test)
+df_y_test <- (subset(df_test, select = c(SalePrice)))
+df_test_scaled <- cbind(df_hold_test, df_y_test)
+
+df_test_scaled <- drop_na(df_test_scaled)
+df_test_scaled <- data.matrix(df_test_scaled)
+
+df_test_scaled <- na.omit(df_test_scaled)
+
+df_test_x <- df_train_scaled[,c(1:32)]
+
+y_test <- df_test_scaled[,33]
+```
+
+```{r}
+library(glmnet)
+library(ISLR)
+library(tidyr)
+
+lasso_mod = glmnet(df_train_x, 
+                   y, 
+                   alpha = 1) # Fit lasso model on training data
+
+plot(lasso_mod)    # Draw plot of coefficients
+```
+
+```{r}
+library(caret)
+library(mltools)
+cv.out = cv.glmnet(df_train_x, y, alpha = 1) # Fit lasso model on training data
+plot(cv.out) # Draw plot of training MSE as a function of lambda
+bestlam = cv.out$lambda.min # Select lamda that minimizes training MSE
+lasso_pred = predict(lasso_mod, s = bestlam, newx = df_test_x) # Use best lambda to predict test data
+mean((lasso_pred - y_test)^2) # Calculate test MSE
+lasso_pred <- (lasso_pred)
+
+R2(lasso_pred, y_test)
+
+bestlam
+
+df_check <- as.data.frame(cbind(lasso_pred,y_test))
+df_check$difference <- abs(df_check$`1` - df_check$y_test)
+df_check
+```
+
+```{r}
+df_test_main_x <- subset(df_test_main, select = c(LotFrontage, LotArea,OverallQual,OverallCond,YearBuilt,YearRemodAdd,MasVnrArea,BsmtFinSF2, BsmtUnfSF, TotalBsmtSF,X1stFlrSF,X2ndFlrSF,LowQualFinSF,GrLivArea,BsmtFullBath,BsmtHalfBath,FullBath,HalfBath,BedroomAbvGr,KitchenAbvGr,TotRmsAbvGrd,Fireplaces,GarageCars,GarageArea,WoodDeckSF,OpenPorchSF,EnclosedPorch,X3SsnPorch,ScreenPorch,PoolArea,MoSold,YrSold))
+df_hold_test <- scale(df_test_main)
+df_hold_test <- as.data.frame(df_hold_test)
+
+
+df_test_main_x <- data.matrix(df_test_main_x)
+
+
+# df_test_main_x
+
+predictions <- as.data.frame(predict(lasso_mod, df_test_main_x, s = bestlam))
+write.csv(predictions, 'predictions.csv')
+```
+

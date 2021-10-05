@@ -1,0 +1,188 @@
+Lecture 1 - Week 4
+========================================================
+author: 
+date: 
+autosize: true
+
+```{r}
+library(tidyverse)
+library(dslabs)
+library(palmerpenguins)
+```
+
+Homework 4
+======
+```{r}
+ggplot(penguins) +
+  geom_qq(aes(sample=bill_length_mm))
+
+penguins %>%
+  select(species, island)
+
+```
+
+
+
+Review
+========================================================
+
+Let's create a really simple dataframe to play with:
+```{r}
+letters <- c("a", "b", "c", "d")
+names <- c("Abigail Smith", "Blaine Doe", "Carol Miller", "David Brewer")
+age <- c(25,35,45,55)
+df <- tibble(letters, names, age)
+df
+
+#Selecting the first row
+df[1,]
+
+# Selecting all rows with age values NOT less than 40
+df %>%
+  filter(!(age < 40))
+
+#Accessing the age column
+df$age
+
+# Summarizing age, and changing mean
+df %>%
+  select(c("age")) %>%
+  summarize(mean = mean(age)) %>%
+  mutate(mean = mean * 10)
+
+# Using a function on a column
+mean(df$age)
+mean(df$letters)
+
+# An example plot
+plot1 <- ggplot(data = df, aes(x = age)) +
+  geom_histogram() +
+  facet_grid(.~names)
+
+# An example of grid.arrange syntax
+grid.arrange(plot2, plot1, ncol= 2)
+
+# An example density plot
+ggplot(diamonds) +
+  geom_density(aes(x=price))
+
+# Using a normal curve to get an estimated probability for a particular value.
+dnorm(63.3, mean = 63.3, sd = 10)
+```
+Data Navigation
+1. How do we access the first row of this dataframe? How do we filter by age?
+2. How do we access the age column? Dplyr option?
+3. How might we run a function on a column? (like mean)
+
+ggplot
+1. How do we create a plot?
+2. What does facet_grid do?
+3. What does grid.arrange do?
+4. What is the difference between color and fill?
+
+Data Exploration
+1. Why is it important to know the difference between real outliers and error outliers?
+2. If we know we have outliers, which measures of centrality and variance might be best?
+3. Why are histograms valuable?
+4. What is the point of a probability density function?
+
+Pivoting
+========================================================
+
+```{r}
+# Pivot Wider
+head(greenhouse_gases)
+?pivot_wider
+
+greenhouse_gases %>%
+  pivot_wider(id_cols = year, names_from = gas, values_from = concentration) %>%
+  dim()
+
+#Another example
+head(death_prob)
+
+death_prob %>%
+  pivot_wider(id_cols = sex, names_from = age, values_from = prob) %>%
+  head()
+```
+
+```{r}
+#Pivot longer
+View(olive)
+?pivot_longer
+dim(olive)
+olive %>%
+  pivot_longer(cols = 3:10,
+               names_to = "fatty_acids",
+               values_to = "fatty_acid_content") %>%
+  dim()
+
+#If we want to take all the numeric variables in the penguins dataset and put them into one column:
+penguins %>%
+  pivot_longer(cols = c("bill_length_mm", "bill_depth_mm", "flipper_length_mm"),
+               names_to = "Characteristics_mm",
+               values_to = "Measurements") %>%
+  mutate(Measurements_Inches = Measurements/25.4) %>%
+  # An example of using a pivoted column in a ggplot function
+  ggplot(aes(x=species, y = Measurements_Inches, fill= Characteristics_mm)) +
+    geom_bar(stat="identity", position="dodge")
+
+#Another example with iris
+iris %>%
+  pivot_longer(cols = 1:4,
+               names_to = "Column_Names",
+               values_to = "Column Measurements")
+
+# Creating an index of numbers:
+1:256
+
+# Why might pivoting data to be longer be useful? Tall data works well with ggplot, for one. Another benefit, easy calculation on a number of similar variables.
+
+```
+
+
+Separating/Uniting
+========================================================
+
+```{r}
+df %>%
+  separate(names, into=c("First Name", "Last Name")) %>%
+  unite("Made Up Column",`First Name`, `Last Name`, sep= "_")
+
+```
+
+
+Missing Values
+=======
+```{r}
+table(is.na(penguins$sex))
+table(is.na(penguins$species))
+
+dim(penguins)
+penguins %>%
+  filter(complete.cases(sex,body_mass_g)) %>%
+  #dim()
+  count(sex)
+
+penguins %>%
+  fill(sex) %>%
+  filter(complete.cases(sex)) %>%
+  #dim()
+  count(sex)
+
+# Only use fill when it's absolutely justified.
+
+```
+
+```{r}
+# Another method of dealing with missing data: imputation
+
+penguins %>%
+  mutate(body_mass_g = ifelse(is.na(body_mass_g),mean(body_mass_g, na.rm=TRUE), body_mass_g))
+```
+
+Finally, we can run a predictive algorithm (based on these four variables, we expect our penguin's sex to have a 78% likelihood of being _____.)
+
+
+
+

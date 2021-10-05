@@ -1,0 +1,257 @@
+---
+title: "Getting Started with R Coding"
+
+output: html_notebook
+---
+### Libraries
+```{r}
+#install.packages('tidyverse')
+library(tidyverse)
+# Loading in a library will often cause R to spit out some diagnostic text. This is usually nothing to worry about.
+```
+
+
+### Basic R Syntax & Math Operators
+
+```{r}
+variable <- 1
+variable <- variable/2
+variable
+```
+
+Some basic math operators:
+``` {r}
+paste(2+2, 2-2, 2*2, 2/0.25)
+```
+
+Save on typing by using parentheses to assign and display variables at the same time:
+``` {r}
+new_variable <- 4
+(new_variable <- new_variable^(variable + 3))
+
+```
+*You can use the ls() function or check out the Environment pane to easily see the variables stored in your environment.*
+
+### Function Syntax
+*R is a functional programming language, though not a pure one*
+```{r}
+#Get help with a function:
+?sqrt
+```
+
+Functions, at their most basic, take in inputs and spit out outputs. This means they can be chained.
+```{r}
+(nested <- sqrt(sqrt(sqrt(sqrt(9999999)))))
+(clean <- 9999999^(1/16))
+```
+
+A brief detour on using logic:
+``` {r}
+#Note the double equals sign
+if(nested == clean) {
+  print("They're the same")
+} else(
+  print("You screwed up somewhere")
+)
+```
+
+Making a function:
+```{r}
+new_multiplication_function <- function(argument1, argument2) {
+  argument1 <- argument1*argument2
+  #Make sure to return the output, if you want this function to work with others
+  argument1 #Or, if you want to be more explicit, return(argument)
+}
+
+new_multiplication_function(2,2)
+```
+
+
+### Loop Syntax
+```{r}
+a <- 1
+variable <- 2
+while (a < 10) {
+  #What do you think happens if I take out the "variable <-" part of the line below?
+  variable <- new_multiplication_function(variable, a)
+  #It helps to spread out nested functions
+  print(
+    paste("Results:", variable)
+    )
+  a <- a + 1
+}
+
+```
+### Types of data
+
+```{r}
+# Numeric
+(num_variable <- 1.5)
+
+# Character
+(char_string <- "Data Science")
+```
+Just to confuse things a bit, this is called 'coercion'. Note the new quotation marks around what used to be our number:
+```{r}
+(as.character(num_variable))
+```
+Coercion usually only works when it makes sense for the data. Case in point, what do you think will happen here?:
+```{r}
+as.integer(char_string)
+```
+Logical variables - these are very important for filtering data
+```{r}
+# Logical
+(bool_var <- 6 > 5)
+```
+
+``` {r}
+# Vector (use head to only show the first 5 results, instead of all 100)
+head(vec_variable <- seq(0,500, by=5))
+```
+Using a 'for' loop on a vector:
+```{r}
+for (i in 1:length(vec_variable)) {
+  print(vec_variable[i] -4)
+}
+```
+
+Important note! R 'vectorizes' many functions, saving you from writing a bajillion 'for' loops. Case in point:
+```{r}
+head(vec_variable <- vec_variable + 7)
+```
+Be careful though - vectorization can be weird if you are working with two vectors of different lengths. R 'recycles' the shorter vector over and over again.
+```{r}
+(ones <- rep(1, 10))
+(one_two <- c(1,2))
+ones + one_two
+```
+
+
+### Entering the Matrix
+```{r}
+# Matrix (a vector of vectors)
+head(matrix(seq(-5,-500, by=-5), ncol=5, nrow=20))
+```
+
+This example shows how R assembles vectors into matrices:
+```{r}
+vector1 <- c(1,2,3)
+vector2 <- c(4,5,6)
+(matrix <- rbind(vector1,vector2))
+(matrix2 <- cbind(vector1,vector2))
+```
+
+Syntax for accessing elements - matrix[row, column]:
+```{r}
+matrix2[2,1]
+```
+### Lists!
+*Lists are very flexible, but very confusing to R if it is expecting a purely numeric array.*
+```{r}
+(list_var <- list(1, 5, TRUE, "word"))
+
+# You can get crazy with nested lists
+(crazy_list <- list(matrix, vector1, list_var))
+# Note that even with all of the elements nested in crazy_list, there are still only three top-level
+#list entries:
+length(crazy_list)
+```
+
+Accessing list items (these options are not quite the same!)
+``` {r}
+crazy_list[1]
+crazy_list[[1]]
+crazy_list[[1]][1,]
+
+```
+
+### Dataframes (Tibbles)
+*Finally, we get to dataframes! Dataframes are basically lists of lists. As with lists, R can get confused if it is expecting a purely numeric matrix, and it gets a dataframe instead (notably, some machine learning functions expect numeric matrices)*
+```{r}
+names <- c("Tom", "Cindy", "Joe", "Victor", "Amanda")
+heights <- c(72, 60, 68, 76, 66)
+gender <- c("male", "female", "male", "male", "female")
+(df <- tibble(names, heights, gender))
+```
+#### Navigating Data Frames
+```{r}
+#Navigating data frames - dataframe[row, column]
+df[1,1]
+#Or, you can access the columns by name
+df$names[1] # df["names"][1,] also works
+```
+
+Converting height from inches to cm and making a new column (remember vectorization!)
+```{r}
+
+df$heights_cm <- df$heights * 2.54
+df
+```
+Counting categorical columns in a dataframe:
+```{r}
+table(df$gender)
+```
+Getting names of columns in a dataframe:
+```{r}
+names(df)
+```
+
+Getting names of categories in a dataframe column:
+```{r}
+levels(factor(df$gender))
+```
+Summarizing continuous columns:
+```{r}
+mean(df$heights)
+```
+
+### Filtering dataframes with boolean vectors (the hard way).
+What do you think will happen if we run this code?
+```{r}
+(gender_filter <- df$gender == "female")
+```
+Notice that using a boolean calculation on our dataframe didn't immediately filter it. Now we have to apply our new boolean vector to our dataframe to see the new results:
+```{r}
+df[gender_filter,]
+```
+To save on typing, we can write that more succinctly:
+```{r}
+df[df$heights >= 72,]
+```
+Matching
+```{r}
+df[match(c("Cindy", "Tom", "Amanda"), df$names),]
+```
+```{r}
+c("Alex", "Tom", "Hugo") %in% df$names
+```
+
+### Reorganizing Dataframes
+Get an 'order' vector, telling us how a column should be sorted
+```{r}
+order(df$heights)
+```
+
+Now use it to sort by height.
+```{r}
+df[order(df$heights),]
+```
+Ranking by Height
+```{r}
+df$height_rank <- rank(df$heights)
+df
+```
+Selecting the min/max values:
+```{r}
+#This option pulls out the max value
+max(df$heights)
+```
+```{r}
+#This option pulls out the whole row with the max value
+df[which.max(df$heights),]
+```
+
+You can use the min() and which.min() functions in the same way.
+
+#### Whew! I know, this is a lot of material to cover. We're actually going to cover easier ways to do a lot of this later, but it's important to know the basics. Knowing how R works on a basic level can help when troubleshooting the more convenient functions we're going to learn in the following weeks.

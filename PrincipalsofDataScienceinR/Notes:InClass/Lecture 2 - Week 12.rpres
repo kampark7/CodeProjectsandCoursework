@@ -1,0 +1,245 @@
+Lecture 2 - Week 12
+========================================================
+autosize: true
+
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(palmerpenguins)
+library(gridExtra)
+```
+
+Building the Model that We're Going to Use Throughout this Lecture
+========
+```{r}
+rf_spec <- rand_forest() %>%
+  set_mode("classification") %>%
+  set_engine("ranger")
+
+rf_wf <- workflow() %>%
+  add_model(rf_spec) %>%
+  add_formula(species ~ .)
+```
+
+Cross-Validation
+========================================================
+We've already talked about two means of cross-validation, in the form of:
+* Bootstrap Sampling
+and
+* Hold-out Validation (the Train/Test/Validation split)
+
+Yet another review of the hold-out method
+=======
+Core concept: Split the data in two, so you have data to train your model on, and "hold-out" data that you can test your model on. Your model has NOT seen your test data during its creation phase, so the test data is a reasonable simulation of new data, allowing us to evaluate our model's ability to handle trends in new data.
+
+NOTE: Actual new data might be less predictable than our hold-out data. That is always a risk.
+
+*Why this is useful*: If we have *labeled* data - data where we have a truth column (we're predicting species, but we also know species, for example), this allows us to verify our model on labeled hold-out data that it hasn't seen before. If it does fairly well on that labeled hold-out data, then we might have enough confidence in it to apply it to unlabeled data - allowing us to make useful predictions on actual new data.
+
+Code example:
+```{r}
+penguins <- penguins %>% filter(complete.cases(.))
+peng_split <- initial_split(penguins)
+peng_train <- training(peng_split)
+peng_test <- testing(peng_split)
+
+
+# Training our model on our training data
+train_fit <- fit(rf_wf, peng_train)
+# Testing our model on our test data
+train_fit %>%
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  metrics(estimate = .pred_class, truth = species)
+
+
+train_fit %>%
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  conf_mat(truth = species, estimate = .pred_class)
+```
+
+Side note: kap stands for Cohen's kappa, and it's just accuracy normalized by the accuracy that would be expected by random chance, which can make it a little less misleading when your class distributions are skewed (for example, if 75/100 data points are red, and your model is predicting red with 75% accuracy, then your kap score might be much lower than your accuracy.)
+
+Conclusion: Our model handles our hold-out data fairly well (not surprising, the penguin data is pretty predictable)
+
+Bootstrap overview
+========
+We talk about the bootstrap a lot. Before we talk about it again, it's important to review/clarify what we mean:
+Bootstrapping is the process of resampling from our initial dataset multiple times WITH REPLACEMENT.
+
+Bootstrapping is a flexible, powerful technique that can be used at just about every stage of data science, as we've seen as we've attempted the following:
+* Checking sample distributions and using them to make inferences about population characteristics
+* Checking variation in model parameters and building confidence intervals around them without making assumptions about normality
+* Making Monte Carlo simulations to test out actual applications of theoretical concepts (a la Monty Hall problem)
+* And now, checking a model's performance across many variations of samples.
+
+
+Yet another review of bootstrap sampling validation (also called Monte Carlo cross-validation)
+========================================================
+Core concept: Take multiple resamples from the data, and see how the model does on each one. This introduces a broader range of variation to our model than a single one-off hold-out method.
+
+Example:
+```{r}
+#Using a function from tidymodels
+(penguin_boots <- bootstraps(peng_train, times = 250))
+```
+sample/assessment set(out-of-bag sample)
+
+In this case, the 'out-of-bag' sample is our holdout data, used to calculate accuracy for each model trained on each sample.
+
+Training and testing our model on each bootstrapped sample:
+```{r}
+bootstrap_outcomes <- rf_wf %>%
+  fit_resamples(resamples = penguin_boots,
+                control = control_resamples(save_pred = TRUE),
+                #You can specify which metrics you want to calculate
+                metrics = metric_set(roc_auc, accuracy, kap))
+#This dataframe has information on each model, trained and tested on each bootstrap sample.
+
+
+#We can use the "collect metrics" function to get an aggregate measure of model accuracy and roc-auc across all bootstraps and trained models.
+bootstrap_outcomes %>%
+  collect_metrics()
+
+#Another way to do it, to get data for each bootstrap:
+bootstrap_outcomes %>%
+  unnest(.metrics)
+
+#Also, a confidence matrix
+bootstrap_outcomes %>%
+  conf_mat_resampled()
+
+# Finally, we use our model on our test data (which we did NOT include in our bootstrap pool)
+rf_wf %>%
+  fit(peng_test) %>%
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  metrics(estimate = .pred_class, truth = species)
+```
+
+A note on cross-validation and hyper-parameter tuning
+========================================================
+If you are going to do both hyperparameter tuning and cross-validation, then you have to treat them both as separate processes. Testing different models with different combinations of hyperparameters with a tuning grid applied to bootstraps or cross-folds is NOT the same as comparing the same model's performance across multiple bootstraps or cross-folds. If you use hyperparameter tuning to identify the 'best' model on your training dataset, or training bootstraps, you still need to test/validate it with another process. This process is called 'nested validation', because you are validating your hyperparameters within the process of validating your model as a whole.
+
+This is, again, why a train/test/validation split is good to use if you are going to do hyperparameter tuning, because then, if you want, you can use your test set to help tune your hyperparameters, while still holding out your validation dataset to check your final results.
+
+K-Fold Cross-Validation
+===========
+
+The "K" in *K-Fold Cross-Validation* is an arbitrary number. You pick what it is. 5 and 10 fold validation are probably the most common.
+
+K-fold cross validation divides the data into "k" sections, trains a model on all but one of those sections, then tests it on the remaining section of the data. (Pull up web app for illustration).
+
+For some reason, the tidymodels folks decided to defy convention and call it v-folds instead:
+```{r}
+#Note again, that we are still taking our cross-folds only from our initial training dataset.
+(penguin_folds <- vfold_cv(peng_train, v= 10, repeats = 1))
+```
+
+Training and testing our model
+```{r}
+cross_fold_outcomes <- rf_wf %>%
+  fit_resamples(penguin_folds, metrics = metric_set(roc_auc, accuracy, kap))
+
+```
+As you can see, this approach isn't quite as thorough, but it's a lot faster, and it gives use a decent approximation of our model's performance across the entirety of our training data.
+```{r}
+cross_fold_outcomes %>%
+  collect_metrics()
+```
+
+Remember on Tuesday - we used kfolds in conjunction with our tuning grid to tune our hyperparameters. That's a good way to do it, but also remember, if we do that, we still need to evaluate our "best" model somehow.
+
+Leave-P-Out Cross-Validation
+=========
+Finally, there is the *Leave-P-Out* Approach. All of the other approaches we've talked about are *non-exhaustive*, because they don't consider every single possible combination of the training dataset. The "Leave-P-Out" approach, on the other hand, is *exhaustive*. As you might guess, this is a very thorough, but computationally expensive approach.
+
+P is an arbitrary number. The most common P for this approach is 1, which is called *Leave-One-Out* cross validation.
+
+Note: Leave-one-out is considered by some to be outdated, and worse than the other techniques used in this lecture, due to the computational expense of using it with larger datasets, and the relatively low benefit that you get from using this approach compared to, say, a k-folds or bootstrap approach. For this reason, tidymodels syntax generally doesn't support the LOO method, so I'm not going to bother confusing you with a bunch of syntax to do it when you likely will never need to. Just be aware this approach exists.
+
+Note #2: The opposite of this technique, where you leave one out and calculate some kind of statistic for all the data *except* the excluded data point is called *jackknife sampling*, which is another old, arguably outdated technique.
+
+Another Example
+========
+```{r}
+rf_reg <- rand_forest(trees = 100, mtry = tune(),min_n = tune()) %>%
+  set_mode("regression") %>%
+  set_engine("ranger")
+
+rf_tune <- workflow() %>%
+  add_model(rf_reg) %>%
+  add_formula(body_mass_g ~ .)
+
+peng_folds <- vfold_cv(peng_train)
+
+tuned_rf <- tune_grid(rf_tune, resamples = peng_folds, grid = 36, metrics = metric_set(rmse, mae, rsq))
+
+
+(met_tab <- tuned_rf %>%
+  #The collect metrics function often knows when to give us aggregated vs individual specs, based on the type of object we give it.
+  collect_metrics())
+
+mae_top <- met_tab %>% filter(.metric == "mae") %>% slice_min(mean, n=1)
+rmse_top <- met_tab %>% filter(.metric == "rmse") %>% slice_min(mean, n=1)
+rsq_top <- met_tab %>% filter(.metric == "rsq") %>% slice_max(mean, n=1)
+
+mae_plot <- met_tab %>%
+  filter(.metric == "mae") %>%
+  ggplot(aes(x = min_n, y = mtry, color = mean)) +
+    geom_point() +
+    geom_point(data = mae_top, aes(x= min_n, y = mtry), color ="red") +
+    ggtitle("MAE")
+
+rmse_plot <- met_tab %>%
+  filter(.metric == "rmse") %>%
+  ggplot(aes(x = min_n, y = mtry, color = mean)) +
+    geom_point() +
+    geom_point(data = rmse_top, aes(x= min_n, y = mtry), color ="red") +
+    ggtitle("RMSE")
+
+rsq_plot <- met_tab %>%
+  filter(.metric == "rsq") %>%
+  ggplot(aes(x = min_n, y = mtry, color = mean)) +
+    geom_point() +
+    geom_point(data = rsq_top, aes(x= min_n, y = mtry), color ="red") +
+    ggtitle("R-Squared")
+
+grid.arrange(mae_plot, rmse_plot, rsq_plot, ncol = 1)
+```
+
+So, we've got a rough idea of our 'best' hyperparameters (given the trade-off between minimizing RMSE and maximizing R-Squared). But remember, this particular combination of hyperparameters has only seen one variation of our data. Let's see how it fares, in terms of accuracy across our cross-validation process.
+```{r}
+rf_tuned <- rand_forest(trees = 100, mtry = 4, min_n = 23) %>%
+  set_mode("regression") %>%
+  set_engine("ranger")
+
+final_rf_wf <- workflow() %>%
+  add_model(rf_tuned) %>%
+  add_formula(body_mass_g ~ .)
+
+peng_boots <- bootstraps(peng_train, times = 100)
+
+#Training our tuned model on our bootstraps
+(boot_mets <- final_rf_wf %>%
+  fit_resamples(peng_boots, metrics = metric_set(rmse, mae, rsq)))
+
+#So now we have a pretty solid idea of how our model handles variations in data
+boot_mets %>%
+  collect_metrics()
+```
+
+Finally, the moment of truth - the test dataset! Once our model has seen our test dataset, we can't mess with it anymore, at least without the risk of unethically/inefficiently tweaking it to suit our own impressions. That's why we're so thorough about putting it through the wringer with the bootstrap to see if it's any good before we show it our test data.
+```{r}
+final_rf_wf %>%
+  last_fit(peng_split, metrics = metric_set(rmse, mae, rsq)) %>%
+  collect_metrics()
+```
+Bingo! As expected, our model performs reasonably well on our test data.
+
+Some Notes on Homework 12
+======
+It's a bigger assignment, but the code above should provide an example for just about everything you need to do.
+
+Because it's bigger, I'm not making it due until next Thursday, and I'm also cutting out one of the homeworks later in the semester, so it's worth 2 homeworks worth of points.

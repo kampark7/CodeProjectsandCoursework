@@ -1,0 +1,119 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+First, a lesson in naming arguments:
+```{r}
+all.equal(1,2,3)
+```
+Huh? That's not right. What's going on?
+```{r}
+?all.equal
+vector1 <- c(1,2,3)
+vector2 <- c(6,7,8)
+all.equal(1,5)
+all.equal(vector1,vector2)
+all.equal(vector1,vector2, 6)
+# So to make our function arguments more readable, we need to name them - or at least the potentially confusing ones:
+all.equal(vector1, vector2, tolerance = 6)
+```
+
+
+# Now on to plotting
+R's default plotting function is easy enough to use for simple stuff:
+```{r}
+plot(cars)
+plot(iris$Species, iris$Sepal.Length)
+```
+
+But it can be difficult to use when you want to tweak visual elements, or plot multiple types of information over each other, or otherwise step outside the pre-set modes. That's where ggplot comes in.
+
+```{r}
+#install.packages('tidyverse')
+#install.packages('dslabs')
+library(tidyverse)
+library(dslabs)
+```
+
+The ggplot package (stored in the tidyverse package) is based on a 'grammar of graphics', a philosophy about how plots can, and should be built (in layers).
+
+ggplot(data = <DATA>) +
+  LAYER1(MAPPING DETAILS) +
+  LAYER2(MAPPING DETAILS) +
+  MODIFIER(DETAILS) +
+  MODIFIER(DETAILS)
+  
+We could spend all semester talking about ggplot (I use it probably more than any other package, and I still have a ton to learn), but my approach is that once you know the fundamentals, it's easy enough to Google the details when you need them.
+
+A good resource for filling in the details: RStudio's Data Visualization with ggplot2 cheat sheet. (Talk about this a bit)
+
+```{r}
+#Grabbing the 'murders' dataframe, from dslabs:
+data(murders)
+```
+
+Side note: It's time to introduce the pipe - the pipe is an operator introduced by the tidyverse (magrittr specifically) that takes an object, and 'pipes' it in as the first  argument in a function. The pipe is a good way to string multiple functions today in a much more readable way than nesting them.
+
+
+```{r}
+murders %>%
+  ggplot(aes(x=total)) +
+    geom_density()
+```
+
+
+```{r}
+murders %>% 
+  ggplot(aes(x=region, y = total, fill = region)) +
+    geom_boxplot() +
+    geom_jitter(alpha=0.75, width=0.1) +
+    geom_hline(aes(yintercept = mean(total))) +
+    ylab("Total Gun Murders") +
+    xlab("Region") +
+    labs(fill = "Region") +
+    ggtitle("Visualizing Total Gun Murders by Region")
+
+    
+```
+Another example, this time using faceting:
+```{r}
+murders %>%
+  ggplot(aes(x=population, y=total, color=region)) +
+    geom_point() +
+    geom_smooth() +
+    facet_grid(region~.)
+```
+# Now let's cover color a little more:
+
+```{r}
+# The color argument behaves differently in and out of the aes() function.
+murders %>%
+  ggplot() +
+    geom_boxplot(aes(x=region, y=population/100000, fill=region)) +
+    geom_point(aes(x=region, y=total), color = "red", alpha=0.65) +
+# ggplot has some built-in color palettes that can come in handy, with the scale_fill_brewer function.
+    scale_fill_brewer(palette="Spectral")
+```
+# Finally, let's talk about grid arrange, and sorting:
+```{r}
+install.packages("gridExtra")
+library(gridExtra)
+plot1 <- murders %>% 
+  ggplot(aes(x=region, y=total/population)) +
+   geom_boxplot() +
+   theme(axis.text.x=element_text(angle=90)) +
+   ylab("Murders per capita")
+# Let's check out those outliers in the southern region
+plot2 <- murders %>%
+          filter(region=="South") %>%
+            ggplot(aes(x=reorder(state, total/population), y=total/population)) + 
+              geom_point() + 
+              ylab("Murders per capita") +
+              xlab("State") +
+              theme(axis.text.x= element_text(angle = 90))
+
+grid.arrange(plot1, plot2, ncol=2)
+```
+
+# On to the general principles of data visualization (see other slides)
+

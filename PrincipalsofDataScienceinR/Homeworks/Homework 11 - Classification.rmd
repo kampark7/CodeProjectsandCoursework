@@ -1,0 +1,181 @@
+---
+title: "Homework 11: Classification"
+output: html_notebook
+auhtor: "Kamryn Parker"
+---
+
+You are allowed to use any dataset that you want to complete this homework. For some examples, you can use the data() function with no arguments to pull up R's built-in datasets. 
+
+1. Create a bar or box plot comparing the relationship between a categorical variable and one other variable (categorical - bar plot, or continuous - box plot). (Make sure to take into account whether your categorical variable is binomial or multinomial).
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(NHANES)
+
+df <- NHANES
+
+df %>%
+  ggplot(aes(Work, Age, fill=Gender)) +
+  geom_boxplot() +
+  ggtitle("Box Plot of Working vs Age and Separated by Gender")
+
+#My categorical variable is multinomial since a person can be looking, working, or not working
+```
+
+2. Split your data into a training and a test datset.
+```{r}
+df_split <- initial_split(df)
+df_train <- training(df_split)
+df_test <- testing(df_split)
+```
+
+3. Train a classifier model (on your training data) to predict your categorical variable with at least two other variables (It does not need to be statistically significant)
+```{r}
+library(rpart)
+library(rpart.plot)
+
+dec_tree_model <- decision_tree(tree_depth = 15) %>% #setting tree depth after tuning tree
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+dec_tree_fit <- workflow() %>%
+  add_formula(Work ~ Age + MaritalStatus + SleepTrouble + Depressed + Gender + Poverty + Education + HHIncomeMid + Race1 + Race3 + HomeOwn + Weight + Height + SleepHrsNight + Smoke100) %>% #choosiung a good amount of variables to have the tree split with
+  add_model(dec_tree_model) %>%
+  fit(df_train) %>%
+  pull_workflow_fit()
+
+rpart.plot(dec_tree_fit$fit)
+```
+
+3. Test your models predictions against your test dataset, and get the accuracy score.
+```{r}
+dec_tree_fit %>%
+  predict(df_test) %>%
+  bind_cols(df_test) %>%
+  metrics(truth = Work, estimate = .pred_class) #checking accyracy
+```
+
+4a. Mutate a new column that tells you which predictions your model got right, and which ones they got wrong. 
+```{r}
+#creating a new data fram of the predicitons for each row
+new_df <- dec_tree_fit %>% 
+  predict(df_test) %>%
+  bind_cols(df_test) %>%
+  mutate(pred_error = ifelse(.pred_class == Work, Work, "Wrong Guess"), .after = .pred_class) #used .after so it is easier to read
+
+new_df2 <- new_df[!is.na(new_df$pred_error), ] #had to remove NA since it screws up the visulaization
+
+new_df2
+```
+>
+Does your model seem useful, or not?
+I would say this model is pretty useful because it does a good job on classifiying whether someone is working or not. I would think that there is still some more work left to be done on the model to improve it from around 72% accuarcy. I would like to get it somewhere close to mayn 83-85% accuracy. So, I would probably want to do some sort of feature engineering, especially to find out which columns were useful or not in the creation of this model.
+>
+
+4b. Using your new column, plot your correct and incorrect predictions in some way that allows you to see where the wrong points are, compared to the ones that the model got right.
+```{r}
+new_df2 %>%
+  ggplot(aes(x = Weight, y = Height, color = pred_error)) + #Easiest values to see spread of the data
+  geom_point()
+```
+>
+Is there a pattern around your model's incorrect guesses?
+I did not really see a pattern with my wrong guesses it seems like it was pretty random if it guessed wrong or not. The wrong guesses are pretty evenly distributed amongst the rest of the data.
+>
+
+4c. Create a confusion matrix comparing your test predictions to reality.
+```{r}
+dec_tree_fit %>%
+  predict(df_test) %>% #predicts using test data
+  bind_cols(df_test) %>% #Binding those columns to the decsiion tree fit
+  conf_mat(truth = Work, estimate = .pred_class) #Mkaes a confusion matrix as Work as the truth from our precition class
+```
+>
+Do you notice any interesting patterns in your confusion matrix?
+I think it is interesting that my decsiion tree disregard "Looking" but it still had erros for NotWorking actually be Looking at 24. So that was definitly interesting to see. I see that working had the highest amount of correct predictions vs actual which would make sense since majority of people are working as comparded to those not working.
+>
+
+5a. Train a different type of classifier model with the same formula, and test its accuracy on your data.
+```{r}
+library(randomForest)
+library(vip)
+
+rf_model <- rand_forest(trees = 150, mtry = 15) %>% #using 150 trees with 15 variables per tree
+  set_mode("classification") %>%
+  set_engine("randomForest", importance = TRUE)
+
+#having to edit our train and test sets to not contain NA values
+rf_train <- df_train %>%
+  select(c(Work,Age, MaritalStatus, SleepTrouble, Depressed, Gender, Poverty, Education, HHIncomeMid, Race1, Race3, HomeOwn, Weight, Height, SleepHrsNight, Smoke100)) %>% #Be specific about variables needing to be used
+  filter(complete.cases(.))
+
+rf_test <- df_test %>% 
+   select(c(Work,Age, MaritalStatus, SleepTrouble, Depressed, Gender, Poverty, Education, HHIncomeMid, Race1, Race3, HomeOwn, Weight, Height, SleepHrsNight, Smoke100)) %>%
+  filter(complete.cases(.))
+
+#create a workflow formula to include in our model
+rf_wf <- workflow() %>%
+  add_formula(Work ~ Age + MaritalStatus + SleepTrouble + Depressed + Gender + Poverty + Education + HHIncomeMid + Race1 + Race3 + HomeOwn + Weight + Height + SleepHrsNight + Smoke100) %>%
+  add_model(rf_model)
+
+#Make the fit to the random forest with our workflow formula and training data
+rf_fit <- fit(rf_wf, rf_train)
+
+rf_fit %>%
+  predict(rf_test) %>%
+  bind_cols(rf_test) %>%
+  metrics(truth = Work, estimate = .pred_class) #accuracy of the model
+
+```
+5b. Was this classifier better or worse than your first one, in terms of accuracy? Do you have a guess why?
+>
+This classifier was much better at classifying my data than the single decision tree. In fact before I had made this one I had written that between 83-85% was where I would want to be to improve my previous classifier so this one actually exceeded those expectations at about ~88.8%! This classifier did a better job becasue it sort of expands off of a decision tree classifier. A random forest takes a bunch of decision trees and tries them all and calculates the best accuracy using all trees. Compared to a single descision tree this model is much better since it can test multiple scenarios to see what works best. 
+>
+
+6a. Play around with some of the hyperparameters of either of your classifier models - see if you can improve your model's accuracy beyond the default arguments. (Keep using the train-test split approach)
+```{r}
+tune_rf <- decision_tree(cost_complexity = tune(),
+                         tree_depth = tune()) %>%
+            set_engine("rpart") %>%
+            set_mode("classification")
+
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          levels = 5)
+
+
+cross_val_folds <- vfold_cv(df_train, v = 10)
+
+#Creating workflow
+tree_wf <- workflow() %>%
+  add_model(tune_rf) %>%
+  add_formula(Work ~ Age + MaritalStatus + SleepTrouble + Depressed + Gender + Poverty + Education + HHIncomeMid + Race1 + Race3 + HomeOwn + Weight + Height + SleepHrsNight + Smoke100)
+
+#Tuning the workflow formula with resamples, the hyperparameters from tree grid
+tree_tune <- tree_wf %>%
+                tune_grid(resamples = cross_val_folds, grid = tree_grid)
+
+tree_tune %>%
+  show_best("roc_auc")
+
+tree_tune %>%
+  select_best("roc_auc")
+```
+6b. Were you able to improve your model's accuracy? Do you have a guess why?
+>
+I changed the amount of trees the random forest should make and the mtry from 100 to 150 and 3 to 15. This improved my data by about ~0.7% so not fantastic but still a good improvement of course. I think it improved more becasue it was able to try more variable distribution in the data. So it may have found a tree that helps classify much better so it helped to improve our data.
+>
+I also changed the amount of trees in my original decsion tree to 15 however that only slightly improved my model but not really anything too substantial. I think this may be because the decision tree is only relying on a few specific splits so increasing the amount of trees just broke up those splits even more. 
+
+>
+
+7a. Were either of your models non-parametric?
+>
+Yes because using a decsion tree we are not neccesarily using a hypothesis test on the data nor do we have any assumptions about the data to start. Same with the random forest model.
+>
+
+7b. When might a nonparametric model be useful, vs a parametric one?
+>
+A parametric model would be useful in a linear regression type model since we are already assuming the data has some sort of distribution already. A non-parametic model could be useful if we have a lot of categorical or non-continuous data since decsion trees work well with this type of data.
+
+>

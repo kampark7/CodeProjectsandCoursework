@@ -1,0 +1,219 @@
+Lecture 1 - Week 6
+========================================================
+author: 
+date: 
+autosize: true
+
+```{r}
+library(tidyverse)
+library(magrittr)
+```
+
+Some notes on Homework 5
+=======
+* Keep track of which libraries you have loaded in, for reproducibility (my bad)
+* It looks like everyone is getting comfortable with R?
+* A quick and easy way to do what I had you do with the relig_income dataset (flip rows and columns):
+```{r}
+library(dslabs)
+relig_income
+t(relig_income)
+```
+Midterm study guide
+
+Modeling Basics
+==========
+>
+All models are wrong, but some are useful.
+                              -George Box
+>
+
+At their core, models are designed to summarize data in a useful way, especially focusing on consistent trends and relationships between variables.
+
+Model families express precise, but generic, patterns that you want to capture:
+*Linear (regression line)
+*Quadratic curve (like a probability density function)
+
+Models are *fitted* to the data that you have. As a means of summarizing the data, fitted models will never exactly capture every feature of that data, nor do we want them to.
+
+However, a model that captures *fundamental* attributes of our data can be used to make statistical inferences about the characteristics of hypotheses/characteristics of a larger population (provided that our sample is reasonably representative of its population), or it can be used to make predictions based on new data.
+
+The modeling process will be the subject of the rest of our course.
+
+
+Building our First Model
+==========
+
+```{r}
+library(tidyverse)
+library(modelr)
+
+ggplot(mtcars, aes(disp, hp)) +
+  geom_point()
+```
+
+There's a pattern! As displacement (size of the engine) increases, so does horsepower. But how do we measure this relationship? What is the approximate shape of this relationship?
+
+How do we find the model that best fits this data?
+======
+Remember the two basic characteristics of a line?
+y = mx + b
+b = intercept
+m = slope
+```{r}
+models <- tibble(
+  a1 = runif(500, 0, 300), #a1 = b
+  a2 = runif(500, -1, 1) #a2 = m
+)
+
+ggplot(mtcars, aes(disp, hp)) +
+  geom_abline(data = models, aes(intercept = a1, slope = a2), alpha= 0.25) +
+  geom_point()
+
+```
+
+That's a lot of lines. How do we find the 'best' one? To answer that, we have to figure out what 'best' even means. (Show linear fitting animation)
+
+Manually Measuring the 'Fit' of a Linear Model
+======
+We can use the linear function (y = mx + b) as a literal function to calculate a line's similarity to the actual data:
+```{r}
+# First, we make a function that creates a predicted y value based on actual x values plugged into our simulated line characteristics.
+model1 <- function(intercept, slope, x_data) {
+  (slope * x_data) + intercept
+  #mx + b, in algebra terms
+
+}
+
+#Use another function to calculate the difference between the actual y values and predicted y values.
+measure_distance <- function(intercept, slope, x_data, actual_y_data) {
+  predictions <- model1(intercept, slope, x_data)
+  
+  diff <- actual_y_data - predictions
+  #The only thing this line below really does is get rid of negatives (a squared negative is a positive). Note that the square and square root essentially cancel each other.
+  sqrt(mean(diff ^ 2))
+}
+# In statistical terms, we just created a way to calculate the
+# RMSE (Root Mean Square Error) of a linear model.
+
+#Testing it out with two different lines:
+measure_distance(300, -0.5, mtcars$disp, mtcars$hp)
+
+measure_distance(0, 0.5, mtcars$disp, mtcars$hp)
+```
+
+Using mapping to test all of our simulated linear models
+======
+```{r}
+#Mapping our function to check a distance for each model in our models list
+models <- models %>%
+  mutate(RMSE = map2_dbl(a1, a2, measure_distance,
+                             #Additional arguments
+                             x_data = mtcars$disp,
+                             actual_y_data = mtcars$hp))
+
+View(models)
+
+#Remember, rank assigns #1 to our smallest value, and we want the 10 models with the smallest distance:
+top_10_models <- models %>% 
+                    filter(rank(RMSE) <= 10)
+
+ggplot(mtcars, aes(disp, hp)) +
+  geom_point() +
+  geom_abline(data = top_10_models, aes(intercept = a1, slope = a2, color = -RMSE))
+```
+
+
+Testing linear models with a grid search
+========================================================
+We could calculate the distance of hundreds, even thousands, of lines. But it can be hard to tell when we're making progress (and there's still no guarantee that we'll find the 'best' line). We could take a more systematic approach - a grid search:
+```{r}
+#expand.grid takes two vectors/sequences and creates a grid with every possible combination between them:
+grid <- expand.grid(
+  intercept = seq(-50, 100, length = 25),
+  slope = seq(0,1,length = 25)
+) %>%
+  mutate(RMSE = map2_dbl(intercept, slope, measure_distance,
+                         #Additional arguments again
+                         x_data = mtcars$disp,
+                         actual_y_data = mtcars$hp))
+
+#Note, our "grid" doesn't actually look like a grid right now!
+#View(grid)
+top_10_grid_models <- grid %>% 
+                        filter(rank(RMSE) <= 10)
+top_10_grid_models
+#Making an actual grid:
+grid %>%
+  ggplot(aes(intercept, slope)) +
+    #Building our grid
+    geom_point(aes(color = -RMSE)) +
+    #Highlighting the 10 'best' models
+    geom_point(data = top_10_grid_models, size = 3, color = "red", pch = 1) +
+  # pch = 1 tells ggplot that we want our points to actually be hollow circles.
+    ggtitle("Finding the Best Model for the HP/DISP relationship")
+```
+
+Testing our Grid Search Models
+======
+```{r}
+ggplot(mtcars, aes(disp, hp)) +
+  geom_point() +
+  geom_abline(data = top_10_grid_models, aes(intercept = intercept, slope = slope, color = -RMSE))
+```
+
+Note, our grid approach, and our random lines approach both tested 500 lines, but our grid approach is much more consistent, and shows us a stronger pattern.
+
+However, there's an easier way. Machine learning!
+======
+```{r}
+#First, though, we have to modify our distance measuring function to take our intercept and slope as a single argument, not two arguments:
+measure_distance2 <- function(parameters, x_data, actual_y_data){
+  a1 <- parameters[1]
+  a2 <- parameters[2]
+  measure_distance(a1, a2, x_data, actual_y_data)
+}
+
+#Finding the best line
+best <- optim(c(0,0), measure_distance2, x_data = mtcars$disp, actual_y_data = mtcars$hp)
+best
+
+#Plotting our best line
+ggplot(mtcars, aes(disp, hp)) +
+  geom_point() +
+  geom_abline(intercept = best$par[1], slope = best$par[2])
+```
+You don't really need to know the specific algorithm behind the optim() function. The important thing to know is that it takes a "loss function" - some way of measuring the information lost from a model (like RMSE!) and tries to minimize it. optim() uses our measure_distance2 function to calculate our loss function, and then uses those calculations to pick the line with the least amount of information loss (the lowest RMSE). This is the fundamental process behind EVERY machine learning algorithm. Loss minimization is the core foundation for all of machine learning.
+
+Finally, the easy way:
+======
+R has a built-in function for easily building a linear model:
+```
+# Basic linear model syntax (and the syntax for most other models) looks like this:
+model <- lm(y ~ x, data = data)
+#y is the variable we're trying to predict/understand, x is the variable that we're using to predict/understand.
+```
+```{r}
+mtcars_model <- lm(hp ~ disp, data = mtcars)
+#Compare those numbers to our 'best' numbers:
+mtcars_model$coefficients
+best$par
+# Very close! lm is actually a little better than "best".
+```
+
+An Additional Note on Linear Modeling
+========
+Linear models can include categorical variables, if you convert them to dummy variables. Like this:
+```{r}
+library(caret)
+library(palmerpenguins)
+penguins$species
+View(model.matrix(~penguins$species))
+#Note that we turn a 3-level factor into only 2 columns - leave one out. One is assumed to be the reference group (the baseline when all other switches are turned off)
+```
+Dummy variables essentially work like 'switches' to turn a coefficient on or off.
+y = intercept + slope1 * Gentoo_dummy + slope2 * Chinstrap_dummy, and so on.
+
+
+
+

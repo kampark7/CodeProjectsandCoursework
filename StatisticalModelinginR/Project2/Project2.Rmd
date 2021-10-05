@@ -1,0 +1,140 @@
+---
+title: "Project2"
+author: "Kamryn Parker"
+date: "3/6/2021"
+output: html_document
+---
+Background/Intro to the Policy Topic
+  Who is this relevant for? Why is it important? Who is involved in this discussion? What is the brief history of this topic in Idaho?
+Methods
+  -Where did the data come from? How was it summarized? What were you looking for? How many years did you include? How did you deal with NAs? How did you choose models? What models did you    use?
+  -Note: This assignment is allowed to focus on primarily descriptive aspects of the data (tables & barcharts) - this assignment is meant to help you think about how to write about the data   you already     have. That said, I do encourage you to be a little bit adventurous - what kind of statistical models could be used to draw unique insights about this data? Remember, Chi-square models are good for         testing categorical hypotheses, while clustering algorithms are good for uncovering new patterns (hierarchical clustering can handle categorical factors), and decision trees are good for making            predictions from categorical data.
+Overview of Data
+  -This is what the data says, this is how the data has changed, this is who the data applies to, this is where the data comes from, etc.
+  -What are the limitations of the data? In what ways could your data be wrong?
+Implications
+  -What does the data/analysis mean? Why is this important? What could/should be done about it?
+  
+```{r}
+library(tidymodels)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+
+df_2016 = read.csv('2016_data.csv')
+df_2017 = read.csv('2017_data.csv')
+df_2018 = read.csv('2018_data.csv')
+df_2019 = read.csv('2019_data.csv')
+df_2020 = read.csv('2020_data.csv')
+df_2021 = read.csv('2021_data.csv')
+
+#subset of data that relates most closely to education and other background information
+df_2016 <- subset(df_2016, select = c(q1_coded, q7,q8,q10,q26,q27,q28,q29,q30))
+df_2017 <- subset(df_2017, select = c(q1_coded, q9,q16,q17,q23,q27, q28,q29,q30,q31))
+df_2018 <- subset(df_2018, select = c(q1, q2, q6,q18,q19,q20,q21,q22,q23,q24,q25,q26,q28,q29))
+df_2019 <- subset(df_2019, select = c(Q1,Q3,Q4,Q7,Q15,Q16,Q17_a,Q17_b,Q18,Q19_a,Q19_b,Q19_c))
+df_2020 <- subset(df_2020, select = c(Q1,Q2,Q3,Q4,Q10,Q20,Q21,Q22A,Q22B,Q36,Q43,Q44,Q45))
+df_2021 <- subset(df_2021, select = c(Q1,Q2,Q3,Q11,Q22,Q31,Q32,Q33,Q34,Q45,Q46,Q47,Q48))
+
+df_2020$Q22A[is.na(df_2020$Q22A)] <- 5
+df_2020$Q22B[is.na(df_2020$Q22B)] <- 5
+
+#changing the N/A to 'don't know/no answer' to not limit the amount of data I can have Otherwiser my whole data set get dropped when I do a drop N/A
+df_2019$Q17_a[is.na(df_2019$Q17_a)] <- 5
+df_2019$Q17_b[is.na(df_2019$Q17_b)] <- 5
+df_2019$Q19_a[is.na(df_2019$Q19_a)] <- 3
+df_2019$Q19_b[is.na(df_2019$Q19_b)] <- 3
+df_2019$Q19_c[is.na(df_2019$Q19_c)] <- 3
+df_2019$Q4[is.na(df_2019$Q4)] <- 0
+
+#drop any other irregular N/As
+df_2016 <- drop_na(df_2016)
+df_2017 <- drop_na(df_2017)
+df_2018 <- drop_na(df_2018)
+df_2019 <- drop_na(df_2019)
+df_2020 <- drop_na(df_2020)
+df_2021 <- drop_na(df_2021)
+
+```
+
+
+```{r}
+library(data.table)
+ages <- cut(df_2018$q1, #cut used to make a cut in the values of age based on certain break points
+                right=FALSE, 
+                breaks = c(0,(3:7)*10,1000), #starts at 0 and progresses to make 10 year increments until it reaches 80
+                labels = c("<30", "30-39", "40-49", "50-59", "60-69", "70+")) #makes labels for each cut
+df_2018 <- df_2018 %>% 
+  cbind(ages)
+```
+
+
+```{r}
+library(gridExtra)
+
+df_2016[,'q1_coded']<-factor(df_2016[,'q1_coded'])
+plot_2016 <- ggplot(df_2016, aes(q10, color=q1_coded, fill = q1_coded)) +
+  geom_histogram(binwidth = 1) +
+  scale_x_continuous(breaks = seq(0,12,1), lim = c(0,12)) + 
+  scale_fill_discrete(name='Ages', labels = c('<30', '30-49', '50-59', '60-69','69+')) +
+  ggtitle('Education Importance in Idaho in 2016') + 
+  xlab("Scale from 1-10 with 10 being most important") 
+
+df_2017[,'q1_coded']<-factor(df_2017[,'q1_coded'])
+plot_2017 <- ggplot(df_2017, aes(q9, color=q1_coded, fill = q1_coded)) +
+  geom_histogram() +
+  scale_fill_discrete(name='Ages', labels = c('<30', '30-49', '50-59', '60-69','69+')) +
+  ggtitle('Education Importance in Idaho in 2017') + 
+  xlab("Scale from 1-10 with 10 being most important")
+
+plot_2018 <- ggplot(df_2018, aes(q6, color=ages, fill = ages)) +
+  geom_histogram() +
+  ggtitle('Education Importance in Idaho in 2018') + 
+  xlab("Scale from 1-10 with 10 being most important")
+
+df_2019[,'Q1']<-factor(df_2019[,'Q1'])
+plot_2019 <- ggplot(df_2019, aes(Q7, color=Q1, fill = Q1)) +
+  geom_histogram() +
+  scale_fill_discrete(name='Ages', labels = c("<30", "30-34", "35-49", "40-44", "45-59", "50-54","55-59", "60-64", "65-69","70-74", "75-79", "80+", "DK")) +
+  ggtitle('Education Importance in Idaho in 2019') + 
+  xlab("Scale from 1-10 with 10 being most important")
+
+df_2020[,'Q1']<-factor(df_2020[,'Q1'])
+plot_2020 <- ggplot(df_2020, aes(Q10, color=Q1, fill = Q1)) +
+  geom_histogram() +
+  scale_fill_discrete(name='Ages', labels = c("<30", "30-34", "35-49", "40-44", "45-59", "50-54","55-59", "60-64", "65-69","70-74", "75-79", "80+", "DK")) +
+  ggtitle('Education Importance in Idaho in 2020') + 
+  xlab("Scale from 1-10 with 10 being most important")
+
+df_2021[,'Q1']<-factor(df_2021[,'Q1'])
+plot_2021 <- ggplot(df_2021, aes(Q11, color=Q1, fill = Q1)) +
+  geom_histogram() +
+  scale_fill_discrete(name='Ages', labels = c("<30", "30-34", "35-49", "40-44", "45-59", "50-54","55-59", "60-64", "65-69","70-74", "75-79", "80+", "DK")) +
+  geom_histogram(binwidth = 1) +
+  scale_x_continuous(breaks = seq(0,12,1), lim = c(0,12)) + 
+  ggtitle('Education Importance in Idaho in 2021') + 
+  xlab("Scale from 1-10 with 10 being most important")
+
+grid.arrange(plot_2016, plot_2021, ncol=2)
+```
+
+```{r}
+
+plot2_2016 <- ggplot(df_2016, aes(q26, color=q1_coded, fill = q1_coded)) +
+  geom_histogram(binwidth = 1) +
+  scale_x_continuous(breaks = seq(1,5,1), lim = c(0,5)) + 
+  scale_fill_discrete(name='Ages', labels = c('<30', '30-49', '50-59', '60-69','69+')) +
+  ggtitle('Education Quality 2016') + 
+  xlab("Quality of Idaho's K-12 public schools 4 = Poor") 
+
+plot2_2021 <- ggplot(df_2021, aes(Q31, color=Q1, fill = Q1)) +
+  geom_histogram() +
+  scale_fill_discrete(name='Ages', labels = c("<30", "30-34", "35-49", "40-44", "45-59", "50-54","55-59", "60-64", "65-69","70-74", "75-79", "80+", "DK")) +
+  geom_histogram(binwidth = 1) +
+  scale_x_continuous(breaks = seq(1,5,1), lim = c(0,5)) + 
+  ggtitle('Education Quality 2021') + 
+  xlab("Quality of Idaho's K-12 public schools")
+
+grid.arrange(plot2_2016, plot2_2021, ncol=2)
+```
+

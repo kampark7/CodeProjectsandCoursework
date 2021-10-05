@@ -1,0 +1,240 @@
+Lecture 1 - Week 15
+========================================================
+author: 
+date: 
+autosize: true
+
+Miscellaneous
+======
+Shiny homework went alright?
+
+First, some vocabulary
+=======
+data.frame = the default table format for base R (no packages)
+tibble = the preferred table format for the Tidyverse (designed to work better/faster with tidyverse functions)
+data.table = the preferred table format for the Data.Table package (designed to work very fast with data.table functions)
+
+All of these formats have a lot of overlap with each other. Often, you don't even need to think about which format your data is in to work with it. But sometimes, if you are really going to be relying on one package/approach, it's best to make sure your data is formatted for that approach.
+
+
+Data.Table
+========================================================
+Data.Table is valuable because it is faster, and can handle larger datasets better than many other approaches, including the tidyverse. It does this in part by better managing memory, and better utilizing modern multi-core CPUs with threading/parallel-processing.
+https://h2oai.github.io/db-benchmark/
+
+The downside: It's much less readable, and less intuitive to learn.
+
+Note: This tutorial is shamelessly lifted from the CRAN documentation for the data.table package. R has much better documentation than many languages, since the community can contribute. I highly recommend them as a learning resource going forward from this class.
+
+Reading/Writing Data
+========================================================
+
+```{r}
+library(palmerpenguins)
+library(tidyverse)
+library(data.table)
+
+fwrite(penguins, file = "penguins.csv")
+rd_peng <- fread("penguins.csv")
+
+#You can also use data.table to construct new data tables, just like tibble:
+odds <- seq(1, 15, by = 2)
+evens <- seq(2, 16, by = 2)
+DT <- data.table(odds, evens)
+DT
+
+#And we can convert data
+iris <- copy(iris)
+setDT(iris)
+iris
+#Unlike tibble, setDT never automatically converts character columns into factor columns. Worth remembering.
+```
+
+Data Table Syntax
+========================================================
+The basic data.table syntax looks like this:
+
+table[rows, columns, grouping],
+or in shorter, more common syntax:
+DT[i,j, by]
+
+For example:
+```{r}
+head(rd_peng)
+
+#We have to note which columns we want with the "list" function, otherwise, dt will give us one long vector of all our data.
+rd_peng[species == "Adelie", list(bill_length_mm, bill_depth_mm)]
+#However, we can also use the "." function as a stand in for list.
+rd_peng[species == "Adelie", .(bill_length_mm, bill_depth_mm)]
+
+#We can also rename columns
+rd_peng[species == "Adelie",
+        .(NUM_1 = bill_length_mm, NUM_2 = bill_depth_mm)]
+```
+Note that you can refer to columns as variables, you don't have to use the $ identifier, just like the tidyverse.
+
+Calculation
+============
+Because each (numeric) column is treated as a numeric vector behind the scenes, we can easily make calculations on them. Like this:
+```{r}
+rd_peng[species == "Adelie", 
+        sum( (bill_length_mm + bill_depth_mm), na.rm=TRUE)]
+
+#We can quickly get complex and hard to read:
+rd_peng[species == "Adelie" & sex == "male", 
+        .(m_bill_length = mean(bill_length_mm), m_bill_depth = mean(bill_depth_mm), s_both = sum(bill_length_mm + bill_depth_mm))]
+```
+
+But there are ways to simplify
+========
+```{r}
+#Selecting all of our numeric columns
+select_cols <- c("bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g")
+
+#Then we access our list of columns with the ".." identifier to get numeric data for all Adelie penguins
+rd_peng[species == "Adelie", ..select_cols]
+
+#Or to exclude columns:
+rd_peng[species == "Adelie", !..select_cols]
+
+#We can do the same thing with filtering, if our columns are categorical:
+filter_cats <- c("Torgerson", "Biscoe")
+
+rd_peng[island %in% filter_cats, !..select_cols]
+
+#Reverse filtering:
+rd_peng[!(island %in% filter_cats), !..select_cols]
+#FOLLOW UP - NOT WORKING
+```
+
+Grouping:
+=======
+table[i, j, by]
+```{r}
+#We're going to leave i (the filter argument) empty this time.
+# .N is a helper argument, saying "get the count of rows"
+#So this code will tell us how many penguins are in each species
+rd_peng[, .N, by = species]
+
+#Getting more complicated - we're going to count the number of males in each species
+rd_peng[sex == "male", .N, by = species]
+
+#Males by species and island
+rd_peng[sex == "male", .N, by = .(species, island)]
+
+# Now we'll get the average weight by sex, species, year, and island.
+grouping_vars <- c("species", "island", "sex", "year")
+
+#Note, for whatever reason, the "by" columns don't require the ".." identifier.
+rd_peng[,.(mean_bw = mean(body_mass_g, na.rm=TRUE)), by = grouping_vars]
+
+#We can also automatically sort our grouped results by switching "by" to "keyby":
+rd_peng[,.(mean_bw = mean(body_mass_g, na.rm=TRUE)), keyby = grouping_vars][sex %in% c("female", "male")]
+
+```
+
+Chaining
+======
+So, let's say that we want to get the table we just created above, but we want to sort it by body mass, rather than by our grouping vars. Well, that's hard to do within the single DT call that we're making. However, you'll note that the output of a DT call is another table, although with different formatting. That means that we can put that output into another input, then do something else to it, and so on.
+
+This is the same idea behind "piping" in the tidyverse, but with DT, it's called "chaining", and it's a lot uglier.
+```{r}
+#Here's our original table, which we want to sort by mean_bw.
+rd_peng[,.(mean_bw = mean(body_mass_g, na.rm=TRUE)), keyby = grouping_vars]
+
+#Here is how we would normally sort with dt:
+rd_peng[order(-body_mass_g)]
+
+#Side note, you can also order by multiple layers:
+rd_peng[order(species, body_mass_g)]
+
+#Anway, all we have to do to sort our grouped table is to slap another set of brackets on the output.
+rd_peng[,.(mean_bw = mean(body_mass_g, na.rm=TRUE)), keyby = grouping_vars][order(species, -mean_bw)]
+
+#Formatting can help us to keep track of our chaining layers:
+rd_peng[,
+        .(mean_bw = mean(body_mass_g, na.rm=TRUE)),
+        keyby = grouping_vars
+        ][
+          order(species, -mean_bw)
+          ][sex %in% c("male", "female")]
+
+#Finally, we need to reverse the order of our sort, so we get highest mean bodyweight at the top of our output
+rd_peng[,
+        .(mean_bw = mean(body_mass_g, na.rm=TRUE)),
+        keyby = grouping_vars
+        ][
+          order(-mean_bw)]
+```
+
+Grouping by Continuous Variables
+========
+We can also group by continuous variables. Let's check how many male and female penguins are above or below 3500 grams.
+```{r}
+#Note, you don't actually have to type "by ="
+rd_peng[, .N, .(sex, body_mass_g >= 3500)]
+
+#We can use a chain to remove those blank categories, and another to sort the variables better
+rd_peng[, .N, .(sex, over_3500_g = body_mass_g >= 3500)
+        ][sex %in% c("male", "female")
+          ][order(sex)]
+```
+
+Mapping
+=======
+data.table has another helper argument called '.SD' (Subset of Data) that helps us access groups.
+```{r}
+#If we don't have a grouping argument, then our "Subset" is just all of our data.
+rd_peng[, print(.SD)]
+
+#But once we starting grouping, it gets useful.
+rd_peng[,print(.SD),by = .(species, sex, island)]
+```
+
+Why would we want to break our data into subsets?
+=======
+Well, data.table doesn't work well with summarize(), or mutate(), but it does work well with map, which you might recall, handles split data quite well.
+```{r}
+rd_peng[,print(.SD),by = .(species, sex, island)]
+
+#Now we can use map with datatable to get the mean of every non-grouping column for each SD.
+rd_peng[, map(.SD, mean), by = .(species, sex, island, year)
+        ][sex %in% c("male", "female")]
+```
+
+.Sdcols
+=====
+Finally, we can use the helper argument, .SDcols to specify which columns from our Subsets we actually want to use. So to refine the table above, let's just focus on body mass, and only group by species and year:
+```{r}
+rd_peng[, map(.SD, mean), by = .(species, year), .SDcols = c("body_mass_g")
+      ][!is.na(body_mass_g)]
+```
+
+A summary of our helper arguments: .SDcols, .SD, .N, ., ..
+
+Reshaping
+=======
+Instead of pivot_longer and pivot_wider, data.table works best with its own optimized version of the old melt (wide to long) and dcast (long to wide) functions. 
+```{r}
+melt(rd_peng, measure.vars = c("bill_length_mm", "bill_depth_mm", "flipper_length_mm", "body_mass_g"), variable.name = "Num_Variable", value.name = "Weight or Length")
+
+dcast(rd_peng, species ~ sex, value.var = "body_mass_g", fun = mean)
+```
+
+Example
+```{r}
+table[i,j,by]
+#Counting penguins by year
+rd_peng[,.N, by = year]
+
+# Mean body mass by island, for male penguins specifically.
+rd_peng[sex == "male",.(mean_bw = mean(body_mass_g, na.rm=TRUE)), by = island]
+
+```
+
+
+Summary
+==========
+This is just a very basic intro to data.table. Hopefully if you ever find yourself needing a coding solution that is optimized for speed and memory management over readability, you remember some of this, and you can use it as a jumping-off point to explore a little more deeply.
+
+Note: data.table is a separate approach to the tidyverse, but it is still a part of R, and it can work with other R functions, with a little thought.

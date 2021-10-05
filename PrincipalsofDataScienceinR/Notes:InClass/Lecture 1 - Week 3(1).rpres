@@ -1,0 +1,341 @@
+Lecture 1 - Week 3
+========================================================
+author: 
+date: 
+autosize: true
+
+Miscellaneous
+=======
+Homework 2 - Great work!
+Homework 3
+
+Some common challenges:
+*Changing and re-assigning variables:*
+```{r echo=FALSE}
+library(palmerpenguins)
+library(tidyverse)
+data(penguins)
+```
+
+```{r include=FALSE}
+df <- penguins
+df <- df %>% filter(island != "Torgerson")
+table(df$island)
+# Why didn't our filter work?
+```
+
+*Ranking*
+```{r include=FALSE}
+penguins$ranking <- round(rank((-penguins$bill_length_mm)),0)
+head(penguins[order(penguins$ranking),])
+```
+*sort() sorts the existing vector*
+*rank() creates a new vector with the non-sorted rank of the original vector*
+*order() returns the sorted locations of the vector*
+```{r include=FALSE}
+test_vector <- c(3,1,2,5,4)
+test_vector_2 <- c(6,7,8,9,10)
+sort(test_vector)
+rank(-test_vector_2)
+index <- order(test_vector)
+test_vector[index] #The same thing as sorting.
+sort(test_vector)
+```
+
+
+Considering Data Distributions
+====================
+
+```{r echo=FALSE}
+library(dslabs)
+library(tidyverse)
+data(heights)
+data(us_contagious_diseases)
+head(heights)
+```
+
+How would I describe this data to a space alien with no idea what it means?
+
+If I say that someone is 6 feet, 8 inches tall, what does that mean? What does it mean if they are also female?
+
+Basic Summary Stats
+========
+Let's generate a random dataset, with a random mean, and a random standard deviation.
+```{r echo=FALSE}
+random_mean <- runif(1, 0, 100)
+random_sd <- runif(1,0, 100)
+sample_size <- 100000
+sample_data <- rnorm(sample_size, random_mean, random_sd)
+#Mean
+mean(sample_data)
+#Standard Deviation
+sd(sample_data)
+#Median
+median(sample_data)
+#Median Absolute Deviation
+mad(sample_data)
+
+#Quantile
+quantile(sample_data)
+
+```
+*A note on standard deviation (pull up visual formula):*
+https://www.mathsisfun.com/data/standard-deviation-formulas.html
+
+The standard deviation formula essentially takes the difference of each point from the sample mean, and averages up those differences. That's all. The squaring and square rooting is just to get rid of negative values, and the "n-1" has to do with adjusting for sampling error (degrees of freedom)
+
+The *median absolute deviation* is similar, but it takes the difference of each point from the sample median, and then takes the median of all those differences.
+
+The **standard error** of a statistic (such as the mean) is the standard deviation of its sampling distribution. For example, if we take 500 samples from a population, and take the mean of each of those samples, we then have a vector of 500 means, which has its own standard deviation. That's the standard error of the mean.
+
+Considering Outliers
+=======
+Outliers can exist for a number of reasons: 
+* actual, though unlikely, variation (Shaq is likely to look like an outlier in many height datasets, for example).
+* error - wrong unit of measurement, broken measuring tool, etc,etc.
+
+An experiment with outliers:
+```{r}
+# A short vector with a major outlier
+outlier_vector <- c(1,2,3,4,5,5, 6,7,7,8,9,10,57)
+
+
+#Which estimate for centrality will be most impacted by our outlier?
+median(outlier_vector)
+mean(outlier_vector)
+
+#Which estimate for variance will be most impacted by our outlier? The least?
+range(outlier_vector)
+quantile(outlier_vector)
+
+#Standard deviation
+sd(outlier_vector)
+#Median absolute deviation
+mad(outlier_vector)
+
+```
+
+
+Boxplots can also be handy for identifying outliers (conforming to Tukey's definition)
+```{r}
+penguins %>%
+  ggplot(aes(x=species, y= body_mass_g)) +
+    geom_boxplot()
+```
+
+
+Categorical Data Distributions
+=====================
+Proportions
+```{r echo=FALSE}
+table(heights$sex)
+#OR, we can get proportions, with dplyr:
+heights %>%
+  count(sex) %>% #count is basically dpylr's version of 'table'
+  mutate(proportion = n/sum(n))
+```
+
+Visualizing Data Distributions (Barplots)
+======
+```{r echo=FALSE, out.width="80%"}
+# Categories with associated counts work a little differently
+us_contagious_diseases %>%
+  group_by(disease) %>%
+  summarize(disease_totals = sum(count)) %>%
+  mutate(proportion = disease_totals/sum(disease_totals)) %>%
+# Barplots work well for visualizing categorical data
+    ggplot(aes(x=disease, y=disease_totals, fill=disease)) +
+      geom_bar(stat="identity")
+```
+
+
+Boxplots
+=======
+```{r echo=FALSE}
+us_contagious_diseases %>%
+  filter(state == "Idaho") %>%
+  group_by(disease, year) %>%
+  summarize(count = mean(count)) %>%
+  ggplot(aes(x=disease, y = count, fill=disease)) +
+    geom_boxplot() +
+    theme(axis.text.x=element_text(angle=90))
+```
+*Top of box = 75th percentile, middle line = 50th percentile (median), bottom line = 25th percent.*
+
+Continuous Data Distributions
+======
+It's tough to summarize a continuous variable by frequency (counting) like we would with a continuous variable. As an example:
+```{r}
+# Let's get the mean height in our heights dataset:
+mean(heights$height)
+```
+Okay, so 68.3 is our mean height - that must mean that the height of 68.323 has a high likelihood of showing up in our dataset, right? Let's check with the counting method:
+```{r echo=FALSE}
+heights %>%
+  count(height = round(height,1)) %>%
+  mutate(proportion = n/sum(n)) %>%
+  filter(height > 68 & height < 69)
+```
+
+So we find that, even though 68.3 is our mean value, the odds of someone being exactly 68.3 inches tall are quite low. In fact, no one in our database was actually that exact height.
+
+We could try to solve our issue by breaking our continuous variable into a smaller number of categories.
+```{r echo=FALSE}
+heights %>%
+  count(height = round(height,0)) %>%
+  mutate(proportion = n/sum(n)) %>%
+  filter(height > 67 & height < 69)
+```
+An individual has about an 11% change of being 68 inches tall, give or take. But we still can't talk about more specific values.
+
+Histograms
+========================================================
+Breaking our continuous variable into non-overlapping buckets (or bins) gives us something to work with, in terms of visualization, by counting the number of values that fall into each 'bin':
+```{r, echo=FALSE, out.width="90%"}
+heights %>%
+  ggplot(aes(x=height, fill=sex)) +
+    geom_histogram(bins = 30) +
+    facet_grid(sex~.)
+
+#Note that the y-axis is pretty easy to understand - it's how many times a value shows up.
+```
+
+Smoothed Density Plots
+======
+Removes the sharp edges from histogram, at the cost of being tougher to distinguish detail from. Looks nice, but assumes that our observed values are a subset of a much larger list of unobserved values (many more assumed bins results in smooother lines).This may not be a valid assumption. Also, relies on relative frequencies, rather than counts.
+```{r, echo=FALSE, out.width="90%"}
+heights %>%
+  ggplot(aes(x=height, fill=sex)) +
+    geom_density(adjust=1, alpha=0.4)
+
+# Note that the y-axis is harder to interpret - it's a measure of relative density (probability of occurring)
+```
+
+Cumulative Distribution Function
+=======
+As we've discussed, it's often not useful to talk about the frequency/proportion of individual continuous values. Instead, we have to make assumptions that, based on what we know about the data, any new values are likely to fall within the bounds of a 'distribution function'. Put another way, we assume that our data is a sample from a larger population, which can also be summarized in a similar way.
+```{r}
+heights %>%
+  ggplot(aes(x=height, color=sex)) +
+    stat_ecdf()
+```
+Note, do 100% of population males really fall into this distribution? Our sample can only provide an approximation of reality.
+
+
+### START HERE ON THURSDAY ###
+
+Miscellaneous for Thursday
+======
+```{r}
+library(palmerpenguins)
+```
+Finding sexual dimorphism
+```{r}
+penguins$body_mass_kg <- penguins$body_mass_g/1000
+agg <- aggregate(penguins$body_mass_kg, by = list(penguins$species, penguins$sex), FUN=mean, na.rm=TRUE)
+
+agg
+
+agg$dimorphism <- agg[agg$Group.2 == "male",]$x - agg[agg$Group.2 == "female",]$x
+agg
+agg[agg$Group.2 == "female",c("Group.1", "dimorphism")]
+
+#Why are gentoos the most sexually dimorphic?
+```
+Flipping Boxplots
+```{r}
+penguins %>%
+  ggplot(aes(x=island, y=body_mass_g)) +
+    geom_boxplot()
+
+#Lines
+penguins %>%
+  ggplot(aes(x=body_mass_g, y=island)) +
+    geom_boxplot()
+
+#Boxes
+penguins %>%
+  ggplot(aes(x=island, y=body_mass_g)) +
+    geom_boxplot() +
+    coord_flip()
+```
+
+
+Probability Density Functions (PDFS)
+======
+Probability density functions represent a series of assumptions (if my data is shaped like this, then I can accordingly predict the likelihood of specific values occurring). Generally, pdfs require some parameters to fit their shapes to the data. 
+*Pull up some examples*
+https://www.itl.nist.gov/div898/handbook/eda/section3/eda366.htm
+
+The standard normal/Gaussian density function is by far the most common.Its two parameters are the mean (the center of the curve) and standard deviation (the width of the curve).
+
+Sampling from a Normal Distribution
+======
+**I FIXED THE ERROR, you should be able to play around with this now.**
+```{r}
+# Setting our sample size
+size <- 100
+
+#Setting the shape of our "population" curve
+standard_deviation <- 2000
+mean_value <- 20
+
+#Getting a sample from our "population"
+plot_data <- tibble(rnorm(size, mean_value, standard_deviation))
+#Renaming the column in our sample to be easier to work with
+names(plot_data) <- "data"
+
+#Plotting the sample data
+plot_data %>%
+  ggplot(aes(x=data)) +
+   geom_density(fill="pink") +
+#Plotting our exact 'population' curve over our data
+   stat_function(fun=dnorm, args=list(mean= mean_value, sd=standard_deviation))
+
+
+#Does the random sample data fit the calculated normal curve? What happens if you change the sample size?
+```
+
+
+Standard Units
+======
+The number of standard deviations from the mean.
+```{r}
+random_mean <- runif(1, 0, 100)
+random_sd <- runif(1,0, 100)
+sample_size <- 1000
+sample_data <- rnorm(sample_size, random_mean, random_sd)
+
+z_scores <- scale(sample_data)
+df <- tibble(sample = sample_data, "Z Scores" =  round(z_scores[,1], 2))
+
+abs(z_scores) < 2
+# Helpful tip - the mean of a true/false or 1/0 vector is the same as the proportion of 1's in the vector:
+mean(abs(df$`Z Scores`) < 2)
+
+ggplot(df, aes(x=sample_data)) +
+  geom_histogram() #+
+  geom_vline(aes(xintercept=2), size=2, color="red") +
+  geom_vline(aes(xintercept=-2), size=2, color="red") +
+  geom_label(aes(x = 0, y=1000), label="95% of Data")
+```
+
+R's PDF Functions
+=======
+R's built in pdf functions:
+* *p* for 'probability' - the cumulative distribution function
+* *q* for 'quantile', the inverse c.d.f.
+* *d* for 'density', the density function (p.f. or p.d.f.)
+* *r* for 'random', a random variable having the specified distribution
+(See example code)
+
+QQ Plots - Comparing distributions
+=======
+Quantiles can broken down into percentiles. 
+A QQ plot plots two sets of quantiles against one another, to compare how they relate. We can use this to compare, for example, 
+```{r}
+heights %>%
+  filter(sex == "Male") %>%
+    ggplot(aes(sample=scale(height))) +
+      geom_qq()
+```

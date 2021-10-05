@@ -1,0 +1,107 @@
+---
+title: 'Homework #1'
+output: html_document
+author: "Kamryn Parker"
+---
+
+# Homework 1
+
+## Part 1 (Analyzing teaching data)
+
+1.  Read in the "Teach.csv" data and save it.
+
+```{r}
+library(gridExtra)
+library(ggplot2)
+library(tidyverse)
+
+df <- read.csv("Teach.csv")
+df$group <- as.factor(df$group) #had to change this to a factor to get the box plots to work appropriatley. It didn't see the groups as separate and only saw them as integers
+df
+```
+
+2.  Create a chart to visually examine differences across the *three* groups.
+
+```{r}
+ggplot(df, aes(x = group, y = exam, color = group)) + #coloring by different group
+    geom_boxplot()
+```
+
+3.  Identify the statistical test you should conduct to determine if teaching method is associated with student exam scores.
+
+I beleive the correct test to be done would be the ANOVA test becasue it is examining the different means of the test scores.
+
+4.  Test the assumptions of the model and comment on whether our data violates the assumptions of your model.
+
+    1.  Normality of residuals (or error terms) *See lecture slides for examples on how to do this with code*
+```{r}
+anovaResiduals <- residuals(test)
+qqnorm(anovaResiduals)  
+shapiro.test(anovaResiduals)
+```
+    
+        Based on the graph of residuals it looks pretty normal since the data follows the 45 degree line fairly well.
+
+    2.  Homogeneity of Variance (and balanced designed)
+        
+        There isn't a huge difference in standard deviations so the data is pretty even across the board.
+        
+```{r}
+library(lawstat)
+levene.test(df$exam, df$group)
+```
+    
+
+    3.  Independence (*no code required for this one)*
+
+        These values are independent becasue essentially the grades are determined by each group of teaching style. So that means that each test group and grades of that group are independent of one another.
+        
+5.  Please run the appropriate analysis to determine if different teaching methods affect student learning.
+
+```{r}
+df$group <- as.integer(df$group)
+test <- aov(formula = df$group ~ df$exam, data = df)
+test
+```
+
+6.  Interpret the results of your analysis. What do you conclude?
+
+    Sonce the P-value is less than a significance value of 0.05 we can assume that there is a significant difference in test scores by different teaching styles
+
+## Part 2 (Analyzing simulated categorical data)
+
+*Here is the code to simulate the data*
+
+```{r}
+withCHD = data.frame (angerLevel = c( 'low anger', 'moderate anger', 'high anger'), numPat = c(53,110,27))
+
+withoutCHD = data.frame (angerLevel = c( 'low anger', 'moderate anger', 'high anger'), numPat = c(3057,4621,606))
+```
+
+1.  Construct a contingency table to compare anger levels with CHD (coronary heart disease) to anger levels without CHD.
+
+```{r}
+cont_table <- data.frame(CHD=c("yes", "no"), low_anger=c(53,3057), moderate_anger=c(110,4621), high_anger=c(27, 606))
+cont_table
+```
+
+2.  Please run the appropriate analysis to determine if CHD is associated with propensity to anger easily.
+
+```{r}
+library(rcompanion)
+cont_table %>% select(low_anger, moderate_anger, high_anger) %>% chisq.test()
+cramerV(data.matrix(cont_table)) #had to change to a matrix instead of a data frame
+```
+
+3.  Test the assumptions of the model and comment on whether our data violates the assumptions of your model.
+
+    1.  Independence:
+
+        It is expected that each item is independent of the other since only one person contributes to the value in the data. Another person is not responisble for another person's anger level. 
+
+    2.  Frequency greater than 5:
+
+        The assumption passes for this check as well becasue every data entry in our table is more than 5.
+        
+4. Interpret the results of your analysis. What do you conclude?
+Our p-value is less than 0.05 so that means that means we reject the null hypothesis, (that there is no correlation between having CHD and anger levels) meaning there is a significant association between having CHD and your anger level.

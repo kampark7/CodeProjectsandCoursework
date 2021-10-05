@@ -1,0 +1,115 @@
+---
+title: "Homework 10: Linear Regression"
+output: html_notebook
+author: "Kamryn Parker"
+---
+
+You are allowed to use any dataset that you want to complete this homework. For some examples, you can use the data() function with no arguments to pull up R's built-in datasets. 
+
+1. Create a scatterplot comparing the relationship between two continuous variables in your chosen dataset.
+```{r}
+library(palmerpenguins)
+library(tidyverse)
+library(tidymodels)
+library(ggplot2)
+
+df <- penguins %>% drop_na(bill_length_mm) #For some reason my residual plot wasn't working becasue of NA values so I had to do this first
+df #It had been working previously but stopped working oddly
+
+df %>% #making a simple scatter plot of a distribution. I decided to also include the species just to see where they lie on the graph
+  ggplot(aes(x=bill_length_mm, y=flipper_length_mm, color = species)) +
+    geom_point() +
+    xlab("Bill Length in mm") +
+    ylab("Fipper Length in mm") +
+    ggtitle("Bill Length of Penguins by Flipper Length")
+```
+
+2. Train a linear model to predict one of your chosen variables with the other one. (It does not need to be statistically significant)
+```{r}
+linear_penguins <- lm(flipper_length_mm ~ bill_length_mm, data = df) #creating a linear model with the given data based on our variables
+linear_penguins
+```
+
+3. Plot your linear model over your scatterplot.
+```{r}
+df %>%
+  ggplot(aes(x=bill_length_mm, y=flipper_length_mm, color = species)) +
+    geom_abline(aes(intercept = 126.68, slope = 1.69)) + #adding the regression line to the scatter plot
+    geom_point() +
+    xlab("Bill Length in mm") +
+    ylab("Fipper Length in mm") +
+    ggtitle("Bill Length of Penguins by Flipper Length")
+```
+
+4a. Plot the residuals of your linear model.
+```{r}
+residuals <- augment(linear_penguins, data = df) #calculating the residuals of the given linear model
+residuals
+
+ggplot(residuals, aes(x= bill_length_mm, y = .resid)) + #using the .resid variable to plot the new residual plot
+  geom_point() +
+  geom_hline(yintercept = 0, color = "red") +
+  ylab("Residuals from Linear Model") +
+  xlab("Bill Length in mm") +
+  ggtitle("Residual Plot of Bill Length")
+```
+
+4b. What does your residual plot mean? What kind of information does it tell you?
+>
+The residual plot tells us the accuracy of each point so the closer to the line the more accurate and the farther away the less accurate. Our residula plot looks pretty good becasue our data seems pretty even above and below the residual line. It is a little clustered in the centered with variance as it spreads out so it is not a perfect spread but it is pretty good.
+>
+
+5a. Use the summary function to get the diagnostic stats for your linear model.
+```{r}
+summary(linear_penguins) #taking a summary of my linear model
+```
+5b. What are the coefficients of your linear model? What kind of information do they tell you?
+>
+The coefficiants of the linear model are 126.6844 for the Y intercept and 1.6901 for the slope. This is bascially telling us what the best line is that will fit to our data. So, it calculates the lowest residual distance to a line and wherever that is is our best line fit.
+>
+
+5c. What is the Adjusted R-Squared value of your linear model? What kind of information does this tell you?
+>
+The adjusted R-squared value is 0.4289. This value tells us the "goodness of fit" of our model. So we can see that with a score of 0.4289 we have an alright R-squared value. It is not neccesarily great but it also is not terrible. This just means that we cannot explain about ~58% of the variance in our model. We of course would like our R-squared to be higher but so far it is not terrible.
+>
+
+5d. What are the F-statistic and P-values of your linear model? What kind of information do they tell you?
+>
+The F-statistic of our model is 257.1 and our p-value is 2.2e-16. The F-statistic caluclates the overall p-value of our model and the p-value is the odds that the model would improve the accuracy that much if the null-hypothesis was true. Since our p-value is so small we can usually reject the null-hypothesis so this means that there is some substaitial evidence that there is a correlation between a penguin's bill length and flipper length.
+>
+
+6a. Train a K-smooth or KNN model on your two variables, and plot it over your scatterplot. (You can leave the neighbors argument at its default, or pick the value you think might be best)
+```{r}
+neighbors <- list(5, 10, 15, 20, 25) #keeping the neighbors argumen the same
+
+knn_model <- nearest_neighbor() %>% #creating a knn model using the different break points
+    set_engine("kknn") %>%
+    set_mode("regression")
+
+for (n in neighbors){
+  knn_model <- knn_model %>% update(neighbors = n) #for loop that updates based on the knn model and neighbor size
+
+  fit_knn <- fit(knn_model, flipper_length_mm ~ bill_length_mm, data = df) #fitting my data to the knn model like it was a linear model
+
+plot <- df %>%
+  mutate(preds = predict(fit_knn, df)$.pred) %>% #adding the predicted knn fit to the data
+  ggplot(aes(x = bill_length_mm, y = flipper_length_mm)) +
+    geom_point(aes(y = flipper_length_mm, color = species)) +
+    geom_line() +
+    ggtitle(paste(n, "Neighbors")) +
+    xlab("Bill Length in mm") +
+    ylab("Fipper Length in mm")
+
+print(plot)
+}
+```
+
+6b. What are the differences between the K-smooth model and the linear regression model? When might you choose one over the other?
+>
+The k-smooth model makes a perfect line prediction for the entire model where as the linear model is a single line that is as accuarte as possible with the data. I would probably choose a linear regression when I can clearly see a linear pattern in the data with few outliers. I would probably choose the knn model when the data is a little more varied with a less clear pattern and more outliers. This distribution is a good example of using the knn model since there are a few high outliers in the data. The knn takes a bit loinger than the linear model so that is somehting ot take into consideration if it can be hard to choose between the two especially depending on how large your data set is.
+>
+
+
+
+
+

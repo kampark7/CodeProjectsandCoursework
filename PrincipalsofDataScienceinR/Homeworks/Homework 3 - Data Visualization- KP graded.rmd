@@ -1,0 +1,73 @@
+---
+title: "Homework 3 - Data Visualization"
+output: html_notebook
+author: 'Kamryn Parker'
+---
+Loading in the palmerpenguins library and data again:
+```{r}
+library(palmerpenguins)
+data(penguins)
+penguins
+```
+
+1a. Try to recreate the "HW3_Target_Plot.jpeg" image (stored under the Week 2/Homework Assignment #3 folder in Blackboard Course Content). *Hint: to turn boxplots sideways, you have to flip the coordinates, you can't just switch the x and y variables. There's a ggplot function for that.*
+```{r}
+plot1 <- ggplot(penguins, aes(x=body_mass_g, y=species, color=species)) + 
+    geom_boxplot() +
+    facet_grid(island~.) +
+    ylab("Species") +
+    xlab("Body Mass (Grams)") +
+    labs(fill = "Species") +
+    ggtitle("Species Weight Summary by Island")
+
+plot2 <- ggplot(penguins, aes(body_mass_g, fill=species)) + 
+              geom_histogram() + 
+              facet_grid(island~.) +
+              ylab("Weight Frequencies") +
+              xlab("Body Mass (Grams)") +
+              labs(fill = "Species") +
+              ggtitle("Species Weight Distribution by Island")
+
+grid.arrange(plot1, plot2, ncol=2)
+```
+**Great work! The only thing you missed is the coord_flip() argument. If you swap the x and y variables and then use the coord_flip() argument to turn the boxplot sideways, then the horizontal boxplot will show full boxes, rather than just lines**
+
+**0.9/1 points**
+
+1b. Write a paragraph describing what these plots tell us - what are the key takeaways?
+>
+In the first plot it is shpowing us a distribution of weights by species and grouped by islands based off of a regualr number summary. You can see there are outliers in the data for the Chinstrap penguins on Dream island. They have both outliers for low weight and high weight based off the other weights in that cateogry. The histogram is similar but it is telling us the frequency in which those weights occur. So for eample there are about 12-13 Adelie penguins on Biscoe island with a weight of about 4750. The takeawys of this are that there is a pretty nice spread of penguin weights among species. You can also see how these two plots relate to each toher like the Chinstrap penguins on Dream island you can see the two outliers in the data very well. As for all the data in the set you can see the ends of the spectrum in the histograms and then it matches for the whiskers of the boxplots.
+>
+
+**Great analysis - it's always a good idea to think about how plots can compliment each other. You don't want to overload the reader/viewer with unnecessary plots, but sometimes multiple plots can be really valuable**
+
+**1/1 points**
+
+1c. How could these plots be changed/improved? (A couple of sentences)
+>
+One way you could change these plots or improve them is to also include a scatter plot maybe. Also, you could make the frequencies smaller like groups of 2 instead of 5 to make it easier to count how many penguins there are. 
+>
+
+**Good points. You can change the grouping of histograms by changing the "bin" arrangements. You could also adjust the alpha value on the histograms to better visualize overlap between distributions.**
+
+**1/1 points**
+
+2a. How would you best visualize sexual dimorphism (differences in average sizes between males and females) by species? Make a plot with your best attempt:
+```{r}
+df <- aggregate(penguins, by=list(penguins$species,penguins$sex), FUN=mean,na.rm = TRUE)
+df
+ggplot(df, aes(x=Group.1, y=body_mass_g, fill=Group.2)) +
+    geom_bar(stat='identity', position=position_dodge()) +
+              ylab("Body Mass (Grams)") +
+              xlab("Species") +
+              labs(fill = "Sex") +
+              ggtitle("Sexual Dimorphism")+
+              scale_y_continuous(breaks = c(0,1000,2000,3000,4000,5000,6000)) 
+```
+2b. Why did you choose that plot? (One/two sentences)
+>
+I decided to go with a bar plot becasue I could easily display the difference in body mass between each species and sex type. You can clearly see the different in the wieghts based on their height in the bar plot. I tried a point plot at first but it just seemed too bare and like there was not enough data to make it actually a good visualization to use.
+>
+
+**Great choice - and good use of the scale_y_continuous function. The barplot provides a really nice, intuitive way to compare at a glance.**
+**1/1 points**

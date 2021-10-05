@@ -1,0 +1,401 @@
+---
+title: "R Notebook"
+author: "Kamryn Parker"
+---
+
+
+1) You are dealt a hand of 2 cards. What is the probability of getting a pair (two cards of the same number or type (King, Queen, Jack, Ace))? Please compute this in two ways: 1) as a Monte Carlo simulation, 2) as a calculated probability.
+```{r}
+#Monte Carlo
+library(gtools)
+runs <- 1000
+
+card_game <- function(value){
+  suits <- c("Diamonds", "Clubs", "Hearts", "Spades")
+  numbers <- c("Ace", "Deuce", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King")
+
+  deck2 <- expand.grid(number=numbers, suit=suits)
+  deck2 <- paste(deck2$number, deck2$suit)
+  
+  hands <- permutations(52,2, v = deck2)
+  
+  first_card <- hands[,1]
+  second_card <- hands[,2]
+  
+  card_choice <- paste(value, suits)
+  sum(first_card %in% card_choice)
+  
+  return(sum(first_card%in%card_choice & second_card%in%card_choice) / sum(first_card%in%card_choice))
+}
+
+check <- replicate(runs, card_game("Ace"))
+mean(check)
+```
+
+
+```{r}
+#Calculated 
+suits <- c("Diamonds", "Clubs", "Hearts", "Spades")
+numbers <- c("Ace", "Deuce", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King")
+
+deck <- expand.grid(number=numbers, suit=suits)
+deck2 <- paste(deck$number, deck$suit)
+
+hands <- permutations(52,2, v = deck2) #Creating 52 different permutations of 2 types of cards that can be pulled 
+  
+first_card <- hands[,1] #pulling the first card from the had
+second_card <- hands[,2] #pulling the second card from the hand
+
+card_choice <- paste("King", suits) #Choosing a type of card regardless of suit
+
+(sum(first_card%in%card_choice & second_card%in%card_choice) / sum(first_card%in%card_choice)) # taking the sums of the first and second cards being the same divided by the sum of the first card being the slected choice.
+
+```
+
+2) Women’s shoe sizes can be represented as a normal distribution with a mean of 9.6 inches and standard deviation of 0.5 inch. What is the probability that a randomly selected woman has feet smaller than 8 inches?
+```{r}
+pnorm(8.0, mean = 9.6, sd = 0.5, lower.tail = TRUE) #using pnorm takes in the value 8 we want to find the probability of first, then the mean, then the sd
+```
+
+
+3) We will use the dataset: College, which can be found in the ISLR package (see the end of this doc for more info). It provides information on US colleges in 1995. Please plot a histogram of college graduate rates (variable: Grad.Rate). Discuss any problems that you see, and exclude any values (if needed).
+```{r}
+library(ISLR)
+data(College)
+
+College
+
+ggplot(College, aes(x=Grad.Rate)) + 
+  geom_histogram() +
+  xlim(c(0, 101)) #creatinf simple histogram of results and filtering the outliers in the visualization
+```
+>
+It looks like most colleges have a graduation rate between 50-75% of their student bod with the center of the data being about 63%. I decided to exclude values over 100 because it does not make sense that there would be more than 100% graduation rate. I bet this is most likely due to an error with their measuring system. SOmething like a school did separate graduating classes or when students started then finished.
+>
+
+4) Assuming normality, please construct a 95% Confidence Interval (CI) for the college graduate rates plotted above (variable: Grad.Rate). What does this CI tell us?
+```{r}
+mean(College$Grad.Rate) #getting mean grad rate
+sd(College$Grad.Rate) #standard devitation grad rate
+qnorm(.95, mean = 65.46, sd = 17.17771, lower.tail = TRUE) #calcultation the lower tail
+qnorm(.95, mean = 65.46, sd = 17.17771, lower.tail = FALSE) #calculating the upper tail
+```
+>
+This confidence interval tells us that with 95% confidence the gradaution rates of most colleges is inside the bounds of 37.2 and 93.7. 
+>
+
+
+5) What is the t-distribution? When do we use it? Calculate the 95% CI for the Grad.Rate variable from the previous question using a t-distribution. Is it more appropriate to use a standard normal distribution or t-distribution to calculate a CI for this variable?
+>
+A t distribution is similar to the normal distribution. We normally use the t-distribution when working with hypothesis testing. We can use it to figure out if we should accept or reject the null hypothesis. Since we have such a high sample size I would advise to not use this t-score but instead use the previous confidence interval we found in question 4. T-scores are better used when there is a smaller sample size to deal with. Around the n = 30 range.
+>
+
+```{r}
+calc = rnorm(777, mean = 65.46, sd = 17.17771) #First number is the number of samples in the data set
+t.test(calc) #using the r norm to calculate the t score
+```
+
+6) Run a linear regression model to see if you can predict the number of applications a university/college receives (variable: Apps).
+```{r}
+summary(College$Apps)
+ggplot(College, aes(x=log(Apps))) +
+  geom_histogram()
+
+College$logApps = log(College$Apps)
+
+df <- subset(College, select = c(Top10perc, Outstate, PhD, Grad.Rate, logApps))
+
+df <- df %>% filter(complete.cases(.)) #filtering for NA data
+
+df <- scale(df) #scaling all the data so it is the same value
+df <- as.tibble(df)
+
+ linear_college <- lm(logApps ~ Top10perc + Outstate + PhD + Grad.Rate, data = df)
+ linear_college
+
+ summary(linear_college)
+
+ residuals <- augment(linear_college, data = df)
+
+ ggplot(residuals, aes(x= logApps, y = .resid)) +
+   geom_point() +
+   geom_hline(yintercept = 0, color = "red")
+```
+>
+It looks like the most statistically significant predictors are Top10perc, Outstate, and PhD with PhD being the most significant. Top10perc, Phd, and Grad.Rate all have positive association while Outstate has a negative association. There is a pretty high RSE at 0.8353 so that means there is quite a lot of variance in the data and we can see even from our histogram of Applicaitons that there are outliers in the data. If the RSE was closer to zero it would be more accuarte but since it is not it is not as accuarte as I would like. This model has a pretty good F-statistic though so I think this model could work especially if there was more tuning and shaping of the data to improve the RSE.
+>
+
+7) What is a p-value? What does it tell us? What are the problems with using p-values?
+>
+A p-value is a measure of probability that can tell us whether or not our observed data's null hypothesis is true. The lower a p-value the greater the observed distance is from the null hypothesis. Some issues with the p-value is that it can be misinterpreted as a statsitc or a probability. While it is a probabilty it isn't the type people typcially think where it tells us the proability of our certain even happening. Instead it is tellin us whether or not the null hypothesis (or more extreme) true. This can be a very common miustake 
+>
+
+8)  Now let’s use the College dataset to predict Apps (log transformed) using our machine learning algorithms (still using our standardized predictors listed above). Note: We will run the machine learning algorithms in the next question. Create a training and test dataset.
+```{r}
+library(tidyverse)
+library(tidymodels)
+
+College$logApps = log(College$Apps)
+
+College <- subset(College, select = c(Top10perc, Outstate, PhD, Grad.Rate, logApps))
+
+College <- College %>% filter(complete.cases(.))
+
+College <- scale(College) #scaling all the data so it is the same value
+College <- as.tibble(College)
+
+df_split <- initial_split(College)
+df_train <- training(df_split)
+df_test <- testing(df_split)
+```
+
+9) Run a linear model and kNN model on the train dataset. Predict the number of (log transformed) applications and determine which model is better at predicting the results and collect metrics on them. For the kNN model, tune on hyperparameter k ranging from 1 to 71 by 2. Plot the total within sum of squares for each k value to see which is best.
+```{r}
+
+linear_college2 <- lm(logApps ~ Top10perc + Outstate + PhD + Grad.Rate, data = df_train)
+linear_college2
+
+df_train %>%
+  ggplot(aes(x=logApps, y=PhD)) +
+    geom_abline(aes(intercept = 0.006559, slope = 0.446804)) + #adding the regression line to the scatter plot
+    geom_point() +
+    xlab("Amount of Applications") +
+    ylab("Ammount of PhD Professors") +
+    ggtitle("Applications vs PhD Professors")
+```
+
+
+```{r}
+neighbors <- seq(1,71, by = 2)
+
+knn_model <- nearest_neighbor() %>%
+    set_engine("kknn") %>%
+    set_mode("regression")
+
+for (n in neighbors){
+  knn_model <- knn_model %>% update(neighbors = n) #for loop that updates based on the knn model and neighbor size
+
+  fit_knn <- fit(knn_model, logApps ~ PhD, data = df_train) #fitting my data to the knn model like it was a linear model
+
+plot <- df_train %>%
+  dplyr::mutate(preds = predict(fit_knn, df_train)$.pred) %>% #adding the predicted knn fit to the data
+  ggplot(aes(x = logApps, y = PhD)) +
+    geom_point(aes(y = PhD)) +
+    geom_line() +
+    ggtitle(paste(n, "Neighbors")) +
+    xlab("Applications per School") +
+    ylab("PhD professors per School")
+
+print(plot)
+}
+```
+>
+I would say the knn model is pbetter at predicting becasue the Linear Model is just a guess at "about" where the value would be but a knn model will fit to whatever data you give it. It is more susceptible to overfitting of course but when trying to predict applications for a university I think this model could help.
+>
+
+
+10) Next, we will use the Smarket data (part of the ISLR library). This provides data on the stock market. It consists of percentage returns for the S&P 500 stock index over 1250 days from the beginning of 2001 to 2005. It includes data on the percentage returns for each of the five previous trading days (Lag1 through Lag5). We have also recorded Volume (the number of shares traded on the previous day, in billions), Today (the percentage return on the date in question) and Direction (whether the market was Up or Down on this day). We want to predict whether or not the returns should be classified as Up or Down on a particular day. Let’s use the two previous days (Lag1, Lag2) as features/predictors.
+    a. You will need to create a test and training datasets.
+    b. Then examine this using three different classification algorithms.
+    i. Several of these algorithms have variables that can be tuned. List what variables can be tuned for each function. Use tune_grid to identify good tuning parameters for the methods that
+    have it.
+    c. Summarize your findings with metrics. Which method was best at predicting the outcome?
+```{r}
+#part a
+data(Smarket)
+data_split <- initial_split(Smarket)
+data_train <- training(data_split)
+data_test <- testing(data_split)
+
+Smarket
+```
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+dec_tree_model <- decision_tree(tree_depth = 15) %>% #setting tree depth after tuning tree
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+dec_tree_fit <- workflow() %>%
+  add_formula(Direction ~ Lag1 + Lag2) %>%
+  add_model(dec_tree_model) %>%
+  fit(data_train) %>%
+  pull_workflow_fit()
+
+rpart.plot(dec_tree_fit$fit)
+
+dec_tree_fit %>%
+  predict(data_test) %>%
+  bind_cols(data_test) %>%
+  metrics(truth = Direction, estimate = .pred_class) #checking accuracy
+```
+```{r}
+library(randomForest)
+library(vip)
+
+rf_model <- rand_forest(trees = 150, mtry = 15) %>% #using 150 trees with 15 variables per tree
+  set_mode("classification") %>%
+  set_engine("randomForest", importance = TRUE)
+
+#having to edit our train and test sets to not contain NA values
+rf_train <- data_train %>%
+  select(c(Direction, Lag1, Lag2)) %>% #Being specific about variables needing to be used
+  filter(complete.cases(.))
+
+rf_test <- data_test %>% 
+   select(c(Direction, Lag1, Lag2)) %>%
+  filter(complete.cases(.))
+
+#create a workflow formula to include in our model
+rf_wf <- workflow() %>%
+  add_formula(Direction ~ Lag1 + Lag2) %>%
+  add_model(rf_model)
+
+#Make the fit to the random forest with our workflow formula and training data
+rf_fit <- fit(rf_wf, rf_train)
+
+rf_fit %>%
+  predict(rf_test) %>%
+  bind_cols(rf_test) %>%
+  metrics(truth = Direction, estimate = .pred_class) #accuracy of the model
+```
+
+```{r}
+library(parsnip)
+library(discrim)
+
+data_train <- within(data_train, Direction <- factor(Direction, labels = c(0, 1))) #having to make the directions column a 1 or 0 instead of up or down
+data_test <- within(data_test, Direction <- factor(Direction, labels = c(0, 1)))
+
+NB_mod <- naive_Bayes() %>%
+  set_engine("naivebayes")
+
+NB_workflow <- workflow() %>%
+  add_formula(Direction ~ Lag1 + Lag2) %>%
+  add_model(NB_mod)
+
+stock_spec_fit <- fit(NB_workflow, data = data_train)
+
+data_test <- data_test %>% filter(complete.cases(.))
+
+stock_spec_fit %>% 
+  predict(data_test) %>%
+  bind_cols(data_test) %>%
+    ggplot(aes(x=Direction, y = Lag2, color=.pred_class)) +
+      geom_point()
+
+stock_spec_fit %>% 
+  predict(data_test) %>%
+  bind_cols(data_test) %>%
+  metrics(truth = Direction, estimate = .pred_class)
+
+stock_spec_fit %>% 
+  predict(data_test) %>%
+  bind_cols(data_test) %>%
+  filter(complete.cases(.)) %>%
+  mutate(pred_error = ifelse(.pred_class == Direction, Direction, "Wrong Guess"), pred_error = as.factor(pred_error)) %>%
+    ggplot(aes(x = Lag2, y = Lag1, color = pred_error)) + 
+      geom_point()
+```
+
+```{r}
+tune_rf <- decision_tree(cost_complexity = tune(),
+                         tree_depth = tune()) %>%
+            set_engine("rpart") %>%
+            set_mode("classification")
+
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          levels = 5)
+
+
+cross_val_folds <- vfold_cv(data_train, v = 10)
+
+#Creating workflow
+tree_wf <- workflow() %>%
+  add_model(tune_rf) %>%
+  add_formula(Direction ~ Lag1 + Lag2)
+
+#Tuning the workflow formula with resamples, the hyperparameters from tree grid
+tree_tune <- tree_wf %>%
+                tune_grid(resamples = cross_val_folds, grid = tree_grid)
+
+tree_tune %>%
+  show_best("roc_auc")
+
+tree_tune %>%
+  select_best("roc_auc")
+```
+>
+None of these models are really that accuate at predicitng the direction of the stock market but I guess that is also one of the torubles of the stock market - it is hard to predict. After using my tune grid and testing with different parameters my random forest and naive bayes predicors calcualte accuracy at about the same rate.
+>
+
+11) This question will use the iris data (built into R).
+    a. Use an unsupervised clustering algorithm to calculate iris clusters based on two or more
+    continuous variables. Tune your hyperparameters to identify the ‘best’ arguments for your algorithm (using an elbow plot).
+    b. Compare a plot of two continuous variables from the iris dataset colored by cluster to a plot of the same two variables colored by species. How well did your clustering algorithm
+    identify Iris species from the data?
+```{r}
+data(iris)
+iris2 <- iris
+
+iris <- subset(iris, select = c(Sepal.Length, Sepal.Width))
+
+iris <- iris %>% filter(complete.cases(.))
+
+iris <- scale(iris) #scaling the data to make it less suseptible to misrepresentation
+iris <- as.tibble(iris, rownames = NA)
+
+K_mean_vis <- function(K){ #making a K means algorithm
+(clusters <- iris %>% #clustering is going to be based on my penguins data and the 2 parameters I pass into it
+  dplyr::select(Sepal.Length, Sepal.Width) %>%
+  kmeans(centers = K))
+
+iris$clusters <- as.factor(clusters$cluster) #Making the clusters factors of the data set
+
+ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width, color = clusters)) + #plotting the data
+  geom_point()
+}
+
+K_mean_vis(3) 
+```
+
+
+```{r}
+K_mean_eval <- function(K_list){ #evaluating the K menas cluster algorithm to find the best cluster amount
+    iris %>%
+    dplyr::select(Sepal.Length, Sepal.Width)
+  
+  eval_vector <- vector()
+  K_vector <- vector()
+  
+  for (K in K_list){
+    clusters <- iris %>%
+      kmeans(centers = K)
+    
+    eval_vector <- append(eval_vector, clusters$tot.withinss)
+    K_vector <- append(K_vector, K)
+  }
+  return(tibble(K_vector, eval_vector))
+}
+
+K_list <- seq(1, 10) #printing the elbow plot of the data clusters
+K_mean_eval(K_list) %>%
+  ggplot(aes(x = K_vector, y = eval_vector)) +
+    geom_point() +
+    geom_line()
+```
+
+```{r}
+iris2 %>%
+  ggplot(aes(x=Sepal.Length, y=Sepal.Width, color = Species)) +
+    geom_point() +
+    xlab("Sepal Length") +
+    ylab("Sepal Width") +
+    ggtitle("Sepal Lenght by Sepal Width")
+```
+>
+My clustering algorithm wasn't perfect but it did a pretty good job overall. Especially since this iris data wasn't scaled like the original visualization was made. 
+>

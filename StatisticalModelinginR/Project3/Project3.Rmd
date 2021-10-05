@@ -1,0 +1,94 @@
+---
+title: "Project3"
+author: "Kamryn Parker"
+date: "3/23/2021"
+output: html_document
+---
+```{r}
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+household <- read.csv('Cleaned_Household_Demographics.csv')
+visits <- read.csv('Cleaned_Visits_Data.csv')
+
+df <- visits %>% left_join(household)
+names(df)[names(df) == "Birthday"] <- "Age"
+names(df)[names(df) == "Visit.Dtae"] <- "Visit.Date"
+df$Age <- as.numeric(as.character(df$Age))
+df$Age <- 2021 - df$Age
+df$Age <- as.integer(df$Age)
+
+df <- subset(df, select = -c(Account.Number,Zip.Code))
+
+df <- df[df$Age > 0,]
+df <- df[df$Age < 150,]
+
+df <- drop_na(df)
+
+df <- df %>% mutate(Visit.Date = mdy_hm(Visit.Date))
+
+df$Visit.Date.Fill <- as.Date(df$Visit.Date)
+
+Visit.Year <- year(df$Visit.Date)
+df <- cbind(df,Visit.Year)
+
+Visit.Hour <- hour(df$Visit.Date)
+df <- cbind(df,Visit.Hour)
+
+Visit.Month <- month(df$Visit.Date)
+df <- cbind(df,Visit.Month)
+
+df
+
+dft <- subset(df, select = -c(Veteran, Disabled,Refugee))
+```
+
+```{r}
+summary(df)
+```
+
+```{r}
+library(ggplot2)
+ggplot(df, aes(Visit.Month, fill = Ethnicity)) +
+  geom_bar() + 
+  xlab("Visits per Month") + 
+  ylab("Frequency of Visits in Each Month")
+```
+
+```{r}
+library(forecast)
+# plot.ts(dft)
+dfd <- subset(dft, select = c(Visit.Date.Fill))
+
+dfd <- as.data.frame(table(dfd))
+dfd
+# ggplot(dfd, aes(dfd, Freq)) +
+#   geom_point() + 
+#   xlab("Visits per Day") + 
+#   ylab("Frequency of Visits in Date")
+
+dfd$dfd <- as.Date(dfd$dfd)
+
+# dfd <- dfd[dfd$Freq < 50,]
+
+ggplot(dfd, aes(x =dfd, y = Freq)) +
+	geom_point() +
+  scale_x_date(date_labels = "%d",date_breaks = '1 day') +
+	geom_smooth(method = "loess", se = FALSE, span = 0.6) +
+  xlab('Individual Dates') + 
+  ylab("Amount of Visit Per Day") +
+  labs(title = "Visits Per Day") +
+	theme_classic()
+
+monthly_ts <- ts(dfd$Freq, start = 2015, end = 2020, freq = 12)
+seasonplot(monthly_ts,col=rainbow(12),year.labels=TRUE)
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+

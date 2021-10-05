@@ -1,0 +1,218 @@
+Lecture 2 - Week 14
+========================================================
+autosize: true
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(palmerpenguins)
+```
+
+Data Pre-Processing
+========================================================
+A lot of the data that we have worked with so far has been fairly clean, and easy to use. That usually isn't the case. Data cleaning and pre-processing is often one of the most time-consuming and difficult phases of the data science pipeline.
+
+"All happy families resemble one another, each unhappy family is unhappy in its own way." - Tolstoy
+
+Messy datasets are quite similar to unhappy families - they will test your problem solving skills in ways that are both exasperating and intriguing.
+
+Unfortunately, I can't give you a simple "do this and everything will always work out fine" manual, but we're going to talk about pre-processing in the hopes that at least some of the cleaning process will be made more clear.
+
+*The 'recipes' library (in tidymodels) is designed to support pre-processing.*
+
+Making the Data More Simple, or More Linear
+========
+If you can transform the data to make it more linear - so you can use a simpler algorithm/model to predict it - that can reduce the work you'll need to do later. Example: Using a log transformation to change exponentially-shaped data into linear data, as you did on your midterm through ggplot.
+```{r}
+penguins %>%
+  mutate(bill_length_mm = log(bill_length_mm),
+         bill_depth_mm = log10(bill_depth_mm),
+        flipper_length_mm = log2(flipper_length_mm))
+```
+
+
+Removing un-used columns can also make your data easier to work with, especially if you have a lot of data.
+
+Cleaning up dates and strings can make your life a lot easier - make sure all of your dates are in the right format, and can be compared to each other. You can also break strings down into tokens and stems.
+
+Feature Engineering
+======
+Sometimes, it can be easier to make a new, calculated column, rather than trying to run an algorithm on the ones you have. For example, it might be easier to create an index, summarizing a bunch of different economic variables, rather than trying to create a model from all of those different variables. Or we could create a binned categorical variable from a continuous one, or we could re-categorize a categorical variable with too many categories. The possibilities are infinite.
+
+Managing Data Types
+=======
+Make sure that the data you are feeding your algorithm matches the expectations of the algorithm.
+
+Case in point: logistic regression expects a binary predicted variable, while it can use a variety of variable types as predictors. k-Means clustering, however, only works on continuous/numeric variables.
+
+Classification variables: Most of the classifier algorithms in R are designed to automatically convert multinomial variables (categorical variables with more than two categories) into one-hot columns (or dummy variables), but if you run into issues, you might need to do that manually.
+
+```{r}
+peng_split <- initial_split(penguins)
+peng_train <- training(peng_split)
+peng_test <- testing(peng_split)
+
+peng_recipe <- peng_train %>%
+  recipe(species ~ .) %>%
+  step_dummy(island, sex) %>%
+  prep(training = peng_train)
+
+#We can use the "juice" function to actually get the data from our recipe
+peng_recipe %>%
+  juice()
+
+#And we can use the "bake" function to use our recipe on another dataset.
+peng_recipe %>%
+  bake(new_data = peng_test)
+
+#Instead of adding a formula to a model training workflow, we can add a recipe:
+KNN_recipe <- recipe(species ~ ., data = penguins) %>%
+                  step_dummy(island, sex)
+
+KNN_recipe %>% prep(training = peng_train) %>% juice()
+
+KNN_model <- nearest_neighbor() %>%
+                set_engine("kknn") %>%
+                set_mode("classification")
+
+KNN_workflow <- workflow() %>%
+                  add_recipe(KNN_recipe) %>%
+                  add_model(KNN_model)
+
+fit(KNN_workflow, peng_train)
+
+```
+Note: We can only use a recipe to bake new data that matches the data it was created with, in terms of columns and variable types.
+
+Some algorithms also prefer that categorical variables be listed as numbers rather than text. R's factors handle this, by storing categorical variables as numeric ones behind the scenes. If you are running into an issue getting a categorical/character variable to work with an algorithm, try converting it with as.factor(variable) or step_string2factor(variables)
+
+
+Scaling/Centering the Data
+========================================================
+If we are trying to compare city revenues by population and number of stadiums, as an example, population is going to vary by a LOT more than the number of stadiums that a city is going to have. Some machine-learning algorithms don't have the ability to differentiate between these ranges of possible variance, and so will assume that the variable that has the most impact with the least variance is MORE important, or should have more impact on our results.
+
+If the change from 1 stadium to 2 stadiums is more indicative of city revenues than the change from 200,000 people to 200,001 people, then some algorithms will be weighed more heavily toward stadiums when predicting outcomes, or deciding where clusters should be. This is why scaling and centering can be important.
+
+Scaling data arranges it along a normal distribution, and defines each data point according to its distance from the mean (essentially, it turns each data point into its respective Z score).
+
+Centering data does the same thing, but it sets the mean to be zero, and adjusts the Z-scores accordingly, so that our data is portrayed as being centered around zero.
+
+Both of these steps can be useful for a number of algorithms, especially clustering algorithms.
+```{r}
+# scale your data
+recipe(formula) %>%
+  step_scale(numeric variables) %>%
+# center your data
+  step_center(numeric variables)
+
+#Or do both at the same time:
+recipe(formula) %>%
+  step_normalize(numeric variables)
+```
+
+Imputation
+========
+A lot of machine learning algorithms don't handle missing data very well. Removing missing data is generally fairly easy, but if we don't want to risk removing too many rows just because they might have some NAs in them, we can also impute our NAs (meaning - we can guess at what they might be based on similar rows).
+```{r}
+#Remove NAs
+step_naomit(variables)
+#Impute NAs with the most common value
+step_modeimpute(variables)
+#Impute NAs with the median value
+step_medianimpute(variables)
+#Impute NAs with the mean value
+step_meanimpute(variables)
+#Impute with a KNN algorithm
+step_knnimpute(variables)
+# Impute with bagged trees
+step_bagimpute(variables)
+```
+
+Other Transformations
+======
+https://www.rdocumentation.org/packages/recipes/versions/0.1.15
+
+Here are just a few examples:
+```{r}
+#These two transform the data to different scales
+step_log
+step_logit
+#This one checks for and removes variables that have high multicollinearity with other variables
+step_corr
+#This step cuts a numeric variable into factored categories
+step_cut
+```
+
+Principal components analysis
+========
+Attempts to take a bunch of variables and distill them down to a few key 'principal components' that capture most of their variance. We'll get into this more next semester, if you take DATA-LA 485. This approach can be useful, but because we are working with calculations, rather than directly with the variables we have, it is much less interpretable as well.
+
+Stacking steps in a recipe
+======
+You can have multiple steps in a recipe, like so:
+```{r}
+KNN_recipe <- recipe(species ~ ., data = penguins) %>%
+                  step_naomit(island, sex) %>%
+                  step_dummy(island, sex) %>%
+                  step_scale(bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g) %>%
+                  step_center(bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g)
+
+KNN_recipe %>% prep(training = peng_train) %>% juice()
+
+KNN_model <- nearest_neighbor() %>%
+                set_engine("kknn") %>%
+                set_mode("classification")
+
+KNN_workflow <- workflow() %>%
+                  add_recipe(KNN_recipe) %>%
+                  add_model(KNN_model)
+
+#Check out the cool overview:
+fit(KNN_workflow, peng_train)
+```
+
+Dpylr vs Recipes
+=======
+In general, it's probably easier to do a lot of your pre-processing with dpylr (the tidyverse), using the functions we've already covered, as opposed to using a recipe, but because the recipe package is specifically geared toward pre-processing, it has a number of functions that are easier to use than trying to do some transformations manually. So it's good to be familiar with the package and its functions.
+
+Some common algorithms and their recommended/required pre-processing steps:
+==========
+Non-supervised clustering algorithms: Usually scaling, often centering helps as well.
+
+Linear regression: Actually most accurate when the data is scaled and centered as well, especially if multiple predictor variables are going to be incorporated.
+
+KNN regression/classification: Needs scaled data.
+
+Decision tree regression/classification and their bagged/boosted variants: Very little preprocessing required, apart from basic cleaning, and maybe NA removal/imputation.
+
+Logistic regression: Benefits from scaling, may require variables to be converted into dummy format.
+
+Naive Bayes: Very little preprocessing required.
+
+LDA (Linear Discriminant Analysis): Better with scaled data
+
+Reporting on Data Science Analysis
+========
+When it is possible to create a chart/graph, do that! And do it as often as possible. A picture can say a thousand words - and statistics is no exception. Even experts can often benefit from visuals to add context to your analysis. Try not to make charts/graphs too busy/complicated.
+
+Try to *let the data speak for itself* as much as possible as well - if a pattern is strong, it is usually possible to create a visual illustrating that.
+
+When it is possible to use a simpler model, do that, even if it requires some minor data transformation. More complex models should only be used if the extra complexity significantly improves model accuracy. Otherwise, it's better to be able to explain your model to a layperson.
+
+Metrics
+=======
+Metrics are like models - simpler is better, especially when communicating about your models. Use a complicated metric to pick the best model, if needed, but try to use a simpler metric to explain your model's accuracy to the general reader.
+
+Writing Good Code
+=======
+Write good comments, and always assume that you will forget what you were working on. Write all of your code with the idea that someone who doesn't know anything about it might need to use it someday.
+
+Don't neglect soft skills
+=======
+The ability to *talk* and *write* about data is another skill that is every bit as important as being able to analyze data. Listening to a client and/or members of the public to identify pressing issues and using creativity and data science to solve those issues and explain how you solved them can make all the difference concerning whether people want to look at your work, or whether it ends up collecting metaphorical dust on a digital shelf somewhere.
+
+Likewise, your sense of ethics - your ability to think about who may be impacted by the assumptions and models used for data science - can go a long way toward ensuring that your work is long-lived, and does not face resistance or failure down the line.
+
+Summary
+=======
+Knowing about all the latest techniques can be valuable, but the two most valuable skills that a data scientist can have, in both the academic and business world settings is the ability to clean messy data, and the ability to visualize data in clear, intuitive ways. Never skimp on either of these stages when working on a data science project.

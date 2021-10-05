@@ -1,0 +1,123 @@
+---
+title: 'Homework #4'
+output: html_document
+---
+
+This homework will use the USArrests and mtcars datasets from base R (you don't have to load in a library to access them).This homework is adapted from the lab exercises in the ISLR book, chapter 10.4.
+
+1. Perform a principal components analysis of the USArrests data (and don't forget to scale your data).
+```{r}
+library(mlbench)
+library(corrplot)
+library(tidyverse)
+library(tidymodels)
+data(USArrests)
+USArrests
+
+#Corr matrix/plot
+USArrests %>%
+  select_if(is.numeric) %>%
+  cor() %>%
+  corrplot.mixed(order = "AOE") #AOE
+
+arrest_pca <- USArrests %>%
+                  select_if(is.numeric) %>%
+                  prcomp(center = T, scale = T)
+
+arrest_pca
+```
+
+2. Create a biplot of your first two principal components.
+```{r}
+arrest_pca$x %>%
+  as_tibble() %>%
+  ggplot(aes(x = PC1, y = PC2)) +
+    geom_point()
+```
+
+3. Create a scree plot of your principal components.
+```{r}
+summary(arrest_pca)$importance %>%
+  as_tibble(rownames = NA) %>%
+  rownames_to_column() %>%
+  pivot_longer(cols = 2:5) %>%
+  pivot_wider(names_from = rowname) %>%
+  mutate(name = factor(name, levels = name[order(-`Proportion of Variance`)])) %>%
+  ggplot(aes(x = name, y = `Proportion of Variance`)) +
+    geom_bar(stat = "identity", fill = "blue") +
+    geom_line(group = 1, color = "orange", size = 2) +
+    geom_point() +
+    scale_y_continuous(labels = scales::percent)
+```
+
+4. Perform a K-means cluster analysis on your first two principal components, then plot the results. (Use your best judgement to pick a useful K value)
+```{r}
+library(dplyr)
+df <- as_tibble(arrest_pca$x, rownames = NA)
+
+K_mean_vis <- function(K){ #making a K means algorithm
+(clusters <- df %>% #clustering is going to be based on my penguins data and the 2 parameters I pass into it
+  dplyr::select(PC1, PC2) %>%
+  kmeans(centers = K))
+df$clusters <- as.factor(clusters$cluster) #Making the clusters factors of the data set
+ggplot(df, aes(x = PC1, y = PC2, color = clusters)) + #plotting the data
+  geom_point()
+}
+visual_plot <- K_mean_vis(3) #presenting the data with only 2 clusters
+visual_plot
+```
+
+5. Perform a linear discriminant analysis of the mtcars data, with cyl as your y variable (don't forget to scale).
+```{r}
+library(MASS)
+
+dfx <- scale(mtcars)
+
+dfx <- as.data.frame(dfx)
+
+lda_model <- lda(cyl ~ ., data = dfx)
+
+lda_output <- predict(lda_model)
+
+lda_output$x
+```
+
+6.  Perform a K-means cluster analysis on your first two linear discriminants, then plot the results. (Use your best judgement to pick a useful K value).
+```{r}
+df1 <- as_tibble(lda_output$x, rownames = NA)
+df1
+
+K_mean_vis_2 <- function(K){ #making a K means algorithm
+(clusters <- df1 %>% #clustering is going to be based on my penguins data and the 2 parameters I pass into it
+  dplyr::select(LD1, LD2) %>%
+  kmeans(centers = K))
+df1$clusters <- as.factor(clusters$cluster) #Making the clusters factors of the data set
+ggplot(df1, aes(x = LD1, y = LD2, color = clusters)) + #plotting the data
+  geom_point()
+}
+visual_plot <- K_mean_vis_2(2) #presenting the data with only 2 clusters
+visual_plot
+```
+
+7. Train a plsr (partial least squares regression) model on the mtcars data, with mpg as your y variable. Use cross-validation.(You don't need to worry about splitting the data yourself)
+```{r}
+library(pls)
+reg_model <- plsr(mpg ~ ., data = mtcars, scale = TRUE, validation = 'CV')
+
+pls_preds <- predict(reg_model, type = "response", ncomp = 3)[,,1]
+pls_preds
+```
+
+8. Create a validation plot of your plsr output, to figure out how many components you should use in your model.
+```{r}
+validationplot(reg_model)
+```
+
+9. Re-train your plsr model with your chosen ncomp number. Display a summary of your model.
+```{r}
+reg_model <- plsr(mpg ~ ., data = mtcars, scale = TRUE)
+
+pls_preds <- predict(reg_model, type = "response", ncomp = 1)[,,1]
+pls_preds
+```
+

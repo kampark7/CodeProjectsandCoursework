@@ -1,0 +1,57 @@
+---
+title: "Homework 6: Functional Programming"
+output: html_notebook
+author: "Kamryn Parker"
+---
+```{r}
+library(tidyverse)
+library(palmerpenguins)
+```
+
+1. Using map_dbl, compute the mean of every numeric column in diamonds (from the tidyverse library).
+```{r}
+diamonds %>%
+   select_if(is.numeric) %>% #only choosing the numeric columns
+   map_dbl(mean, na.rm=TRUE)
+```
+
+2. Using map_chr, determine the type (using the typeof() function) of each column in diamonds.
+```{r}
+map_chr(diamonds, typeof) #Shows what each type of column is
+```
+
+3. Using map_int, count the number of unique values in each column of penguins. (Hint: There's an example of this in my lecture code from Thursday)
+```{r}
+penguins %>%
+  map_int(function(x) length(unique(x))) #create an anonymous function x and map it to unique values in penguins and use length to count them
+```
+
+4a. Define a function that takes two arguments, x and y, adds them together, and returns a text string that reads "x + y = result". In other words, your_function(1,2) will return the pasted string: "1 + 2 = 3".
+```{r}
+new_function <- function(x,y){ #takes in values x and y
+  z <- x + y #use variable z as the "result" of function variables
+  (paste(x, "+", y, '=',z)) #using paste function to fit the string conditions
+}
+new_function(1,2) #calls the functions
+
+```
+4b. Using map2_chr, apply your new function to the depth and table columns from diamonds. Save the results into a new column. You'll need to use the mutate function for this (see the example in the code from Thursday).
+```{r}
+diamonds %>%
+  mutate(new_function_column = map2_chr(depth, table, new_function)) %>% #Creates a new column in entire dataframe
+  select(new_function_column) #selects that new column
+```
+
+5. Nest diamonds by cut
+```{r}
+diamonds %>%
+  group_by(cut) %>% #groups the dataframe by cut
+  nest() %>% #nests the rest of the data frame inside of the cut variables
+  View()
+```
+6. Split diamonds by cut
+```{r}
+diamonds %>%
+  split(.$cut) #splits up each cut variable and spits it out into its own dataframe
+```
+

@@ -1,0 +1,264 @@
+Lecture 2 - Week 7 - Probabilities
+========================================================
+date: 10/8/2020
+autosize: true
+
+```{r}
+library(tidyverse)
+library(gridExtra)
+library(palmerpenguins)
+```
+
+A note on Monte Carlo simulations - they're not as complicated as they sound!
+
+Discrete/Categorical Probabilities
+=========
+Let's say we have a bag full of marbles - 3 blue marbles, 5 red marbles, and 2 green marble:
+```{r}
+marble_bag <- rep(c("blue", "red", "green"), times=c(3,5,2))
+marble_bag
+```
+Now let's take a sample of one marble from this bag:
+```{r}
+sample(marble_bag, 1)
+```
+What were the odds that we would get the result we did? How did we arrive at that calculation?
+What would we do if we didn't know the size or characteristics of our population? How would we calculate the probabilities then?
+```{r}
+set.seed(2004)
+random_number1 <- runif(1, min=1000, max=100000)
+random_odds1 <- runif(1, min=0, max=0.5)
+random_odds2 <- runif(1, min=0, max=0.5)
+random_odds3 <- 1 - (random_odds1 + random_odds2)
+
+marble_bag2 <- sample(c("blue", "red", "green"), replace=TRUE, size = random_number1, prob = c(random_odds1, random_odds2, random_odds3))
+```
+How do we figure out the proportions for this new population of marbles we've created? Ideally, we want to perform infinite samples, to know with 100% certainty what our distribution looks like. We can't do that. However, we can get close enough to make a solid approximation. The answer: Monte Carlo simulation!
+
+Monte Carlo Simulation
+======
+Monte Carlo simulation allows us to repeat experiments a large number of times, to get a solid estimate of possible outcomes. The replicate() function is helpful for this.
+```{r}
+sample_count <- 10000
+events <- replicate(sample_count, sample(marble_bag2, 1))
+```
+Now we'll use our sample of 10,000 samples to estimate our population distribution:
+```{r}
+#Count table
+table(events)
+#Proportion table
+table(events) %>% prop.table()
+#Verify
+```
+
+Another example of a Monte Carlo distribution
+========
+If we flip a coin 10 times, what are the odds that we get more than 3 heads? What if we do that 10000 times?
+```{r}
+runs <- 10000
+
+#This function flips a simulated coin 10 times, and checks if we got more than 3 heads. If so, then it returns TRUE, otherwise, FALSE.
+ten_flips <- function(prob_heads){
+  prob_tails <- 1 - prob_heads
+  four_heads <- sum(sample(c(0,1), 10, prob=c(prob_tails, prob_heads), replace=TRUE)) > 3
+  return(four_heads)
+}
+
+ten_flips(0.5)
+
+#Now we calculate the percentage of experiments where we got more than 3 heads.
+ten_thousand_experiments <- sum(replicate(runs, ten_flips(0.5)))/runs
+
+
+monte_carlo_flips <- function(prob_heads, runs){
+  ten_thousand_experiments <- sum(replicate(runs, ten_flips(prob_heads)))/runs
+  return(ten_thousand_experiments)
+}
+
+prob_seq <- seq(0, 1, by=0.05)
+monte_carlo_flips(0.5, 10000)
+
+#Now we can calculate the percentage of experiments where we got more than 3 heads, with our coin being weighted in 21 different ways: 
+map_dbl(prob_seq, ~ monte_carlo_flips(.x , runs = 10000))
+```
+
+
+More Discrete/Categorical Probabilities
+======
+Let's create a fake database of people by their political affiliations
+```{r}
+people <- sample(c("Democrat", "Republican", "Other", "Undecided"), 100000, replace=TRUE, prob = c(0.42, 0.44, 0.04, 0.10))
+
+people %>% 
+  table() %>%
+  prop.table()
+
+#Using dplyr (gives us a cleaner, easier to use, output)
+people <- tibble(people)
+
+#Creating a dataframe with summary counts and proportions
+pol_props <- people %>%
+  group_by(people) %>%
+  summarize(count = n()) %>%
+  mutate(proportion = count/sum(count))
+
+#Visually comparing distributions
+ggplot(pol_props, aes(x=people, y=proportion, fill= people)) +
+  geom_bar(stat="identity")
+```
+
+Sampling
+========================================================
+```{r}
+#Let's save the plot we just made with actual population distributions
+actual_distribution <- ggplot(pol_props, aes(x=people, y=proportion, fill= people)) +
+  geom_bar(stat="identity") +
+  ggtitle("Actual Distribution") +
+  theme(legend.position = "none")
+
+#Let's pull one person out of our list of people
+sample(people$people, 1)
+
+#Now let's do that ten times.
+times <- 1000
+pol_sample_2 <- replicate(times, sample(people$people, 1))
+
+#Let's use our replicated sample to plot a sample distribution, for comparison
+sample_distribution <- pol_sample_2 %>%
+  tibble(people = .) %>%
+  group_by(people) %>%
+  summarize(count = n()) %>%
+  mutate(proportion = count/sum(count)) %>%
+    ggplot(aes(x=people, y=proportion, fill= people)) +
+      geom_bar(stat="identity") +
+      ggtitle("Sample Distribution") +
+      theme(legend.position="none")
+
+grid.arrange(actual_distribution, sample_distribution, ncol=2)
+```
+
+Some Terminology (Independence)
+========================================================
+Probability of a person being democrat: Pr(Democrat) = 0.42 (or 21/50)
+
+Two events are independent if the outcome of one does not affect the other. If we take one data point, put it back, and then take another point from the same dataset, then each of our 1-point samples is independent of the other. However, if I take out a data point, and leave it out, then I've just changed the odds for all of the other data points. Case in point:
+```{r}
+group <- c("Josh", "Cindy", "Rebecca", "Henry")
+sample(group, 3)
+```
+If we sample the first three people from our group without replacement, then we always know who the fourth person to be drawn will be, because that draw is *dependent* on the previous three. However, if we try the same thing with replacement:
+```{r}
+sample(group, replace=TRUE, 15)
+```
+We can take a sample larger than the dataset we actually have, AND we can't guess with perfect certainty who the next person to be drawn will be.
+
+Creating a Sample with Dependent Probabilities
+=======
+```{r}
+people <- sample(c("Democrat", "Republican", "Other", "Undecided"), 100000, replace=TRUE, prob = c(0.42, 0.44, 0.04, 0.10))
+
+table(people)
+people <- tibble(people)
+
+people_pants <- people %>%
+  rowwise() %>%
+  mutate(pants = case_when(people == "Democrat" ~ sample(c("green", "purple"), 1, replace=T, prob= c(0.85,0.15)),
+                           people == "Republican" ~ sample(c("green", "purple"), 1, replace=T, prob= c(0.15,0.85)),
+                           people == "Other" ~ sample(c("green", "purple"), 1, replace=T, prob= c(0.5,0.5)),
+                           people == "Undecided" ~ sample(c("green", "purple", "orange"), 1, replace=T, prob= c(0.47,0.47, 0.06))))
+
+#The proportion of pants (the MARGINAL probability of each pants color)
+people_pants %>%
+  group_by(pants) %>%
+  summarize(count = n()) %>%
+  mutate(prop = count/sum(count))
+
+#The proportion of pants given people (the CONDITIONAL probability of pants | people)
+people_pants %>%
+  group_by(people, pants) %>%
+  summarize(count = n()) %>%
+  mutate(proportion = count/sum(count))
+
+#The proportion of people (the MARGINAL probability of each political affiliation)
+people_pants %>%
+  group_by(people) %>%
+  summarize(count = n()) %>%
+  mutate(prop = count/sum(count))
+
+#The proportion of people given pants (the CONDITIONAL probability of people | pants)
+people_pants %>%
+  group_by(pants, people) %>%
+  summarize(count = n()) %>%
+  mutate(proportion = count/sum(count))
+```
+
+Some Terminology (Dependence)
+=======
+Probability of pants given people: Pr(orange|undecided) = 0.06 (or 6%)
+Probability of people given pants: Pr(undecided|orange) = 1 (or 100%)
+
+In other words, Pr(dependent event|event that already happened)
+
+Note that dependent probabilities are directional (the above two probabilities are not the same).
+
+To calculate the probability of two events co-occurring (the *joint probability* of randomly drawing a republican with green pants, for example), we can multiply:
+Pr(republican & green) = Pr(republican)*Pr(green|republican)
+To calculate: 
+Pr(republican)= 0.44 (This is the *marginal* probability, because it 'marginalizes' (doesn't consider) other variables, like pants color)
+
+Pr(green | republican) = 0.15 (This is the *conditional* probability, because it calculates the probability of green pants on the condition that our person is a Republican)
+Therefore, Pr(republican & green) = 0.44 * 0.15 = 0.066
+
+Let's test that out:
+```{r}
+people_pants %>%
+  filter((pants == "green") & (people == "Republican")) %>%
+  dim()
+
+6652/100000
+```
+Bingo. We just calculated the *JOINT* probability of pants being green and our person being a republican.
+
+We can also calculate the probability of green pants OR a person being republican (the *UNION* probability) with the addition rule:
+Pr(republican OR green) = Pr(republican) + Pr(green) - Pr(republican & green)
+Pr(republican) = 0.44
+Pr(green) = 0.49
+Pr(republican & green) = 0.066
+Therefore, Pr(republican OR green) = 0.44 + 0.49 - 0.066 = 0.864
+Let's test that out:
+```{r}
+people_pants %>%
+  filter((pants == "green") | (people == "Republican")) %>%
+  dim()
+
+# 86282/100000
+```
+Dead on.
+
+Bayes Theorem
+=====
+This is a good spot to briefly introduce Bayes' Theorem:
+Pr(A|B) = (Pr(B|A)*Pr(A))/Pr(B)
+What this means is that if we know all the terms on the right, we can estimate the value on the left. And, with a little re-arranging, we can use any three values to estimate a fourth one.
+
+For example,
+Pr(Republican|green) = Pr(green|Republican)*Pr(Republican)/Pr(green)
+
+In other words:
+Pr(Republican|green) = (0.15*0.44)/0.49
+Or:
+Pr(Republican|green) = 0.13/13%
+```{r}
+(0.15*0.44)/0.49
+```
+Given a new dataset with only pants color data, not political affiliation data, we could use this very basic equation to estimate a probability of political affiliation (poorly) for each party based on pants color. That means, at it's most basic, we've just created a Naive Bayesian classifier model!
+
+Note 1: In reality, the denominator in that equation (Pr(B)) can often be difficult or a nuisance to calculate, and really doesn't serve much purpose except to normalize our likelihood (make it into a percentage). Often, the denominator is just left out, in which case you are only calculating the relative likelihood of each class, not the actual percentage of that class occurring.
+
+Note2 : Naive means that when we have more than one predictor variable (say, pants AND hat color), we assume that they are independent from each other. This is often a false assumption, but these kinds of models tend to work very well anyway.
+
+
+
+
+
+

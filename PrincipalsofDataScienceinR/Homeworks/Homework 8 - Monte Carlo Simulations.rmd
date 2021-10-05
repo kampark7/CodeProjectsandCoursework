@@ -1,0 +1,144 @@
+---
+title: "Homework 8 - Monte Carlo Simulation"
+output: html_notebook
+author: "Kamryn Parker"
+---
+
+1a. Use the rep() function to simulate a box of balls - with 3 cyan balls, 5 magenta balls, and 7 yellow balls.
+```{r}
+library(tidyverse)
+library(gridExtra)
+#plot(cars)
+box_balls <- rep(c("cyan", "magenta", "yellow"), times=c(3,5,7))
+box_balls
+```
+
+1b.  Using the replicate() and sample() functions, sample with replacement from our simulated box 10,000 times, and make a proportion table out of the results, to display the likelihood of each ball being sampled.
+```{r}
+first_sample <- sample(box_balls, 10000, replace=TRUE)
+table(first_sample) %>% prop.table()
+```
+
+*I'm making a simulated deck of cards to use for question 2:*
+```{r}
+suits <- c("Diamonds", "Clubs", "Hearts", "Spades")
+numbers <- c("Ace", "Deuce", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Jack", "Queen", "King")
+deck <- expand.grid(number=numbers, suit=suits)
+```
+
+2a. Calculate the marginal probability of pulling an Ace out of your deck.
+```{r}
+deck %>%
+  group_by(number) %>%
+  summarize(count = n()) %>%
+  mutate(prop = count/sum(count)) %>%
+  filter(number == 'Ace')
+```
+2b. Calculate the conditional probability of pulling an Ace out of your deck, provided that you know your card is from the Diamonds suite.
+```{r}
+#probability of getting an Ace given it is a Diamond 0.1923
+deck %>%
+  group_by(suit, number) %>%
+  summarize(count = n()) %>%
+  mutate(proportion = count/52) %>% #for some reason when i had sum(count) with this proportion it was not working so I had to manually input 52
+  filter(number == 'Ace', suit == "Diamonds")
+  
+```
+2c. Using the multiplication rule, calculate the joint probability of pulling a card that is an Ace AND in the Hearts suite.
+```{r}
+#probability of getting a type of suite
+prob_suit <- deck %>%
+  group_by(suit) %>%
+  summarize(count = n()) %>%
+  mutate(prop = count/52) %>%
+  filter(suit == "Hearts")
+
+#probability of getting an Ace given it is a heart 0.1923
+prob_numb_give_suit <- deck %>%
+  group_by(suit, number) %>%
+  summarize(count = n()) %>%
+  mutate(proportion = count/52) %>%
+  filter(number == 'Ace', suit == "Hearts")
+
+prob_ace_heart <- prob_suit$prop * prob_numb_give_suit$proportion
+prob_ace_heart
+
+#same as doing Pr(Ace & Hearts) = Pr(Ace | Hearts) * Pr(Hearts) -> 0.01923 * 0.25 -> 0.004807629
+```
+
+3a. Define a function that simulates flipping a coin 7 times, and returns TRUE if you get 5 or more heads, and returns FALSE if you don't. (You can find some helpful sample code in the Irizarry book, Section 13.9 - Exercises - Question 12.)
+```{r}
+#function takes in simulated filps
+prob_flip <- function(num_flips){
+  
+  coin_flip <- sample(c(0,1), num_flips, replace=TRUE, prob = c(0.5, 0.5))
+  
+  if (sum(coin_flip) >= 5)  {
+    return (paste("TRUE"));
+  } else {
+    return (paste("FALSE"));
+  }
+  
+}
+
+prob_flip(7)
+```
+
+3b. Replicate your coin flipping function 1000 times, and get the mean of your results (the overall probability of each event coming up with 5 or more heads).
+```{r}
+#change fucntion name for the mean, get rid of if else and instead calculate mean of coin flips
+prob_flip_mean <- function(num_flips){
+  
+  coin_flip <- sample(c(0,1), num_flips, replace=TRUE, prob = c(0.5, 0.5))
+  
+  mean(coin_flip)
+}
+
+prob_flip_mean(1000)
+```
+
+4a. Below is the code required to run a Monte Carlo simulation of the Monty Hall problem (There is a prize behind one of three doors - you pick one door, but before you open it, the host opens another door and shows you that there is no prize behind it. Should you stick with the door you picked, or switch?)
+
+Go through this code and write a brief comment above each line, explaining what it does. If you get stuck, try running sections of the code to see what it does.
+```{r}
+B <- 10000
+
+monty_hall <- function(strategy){
+  #creates character type of 3 doors
+  doors <- as.character(1:3)
+  #makes the sample of prizes a person could recieve (like the types of marbels in a bag)
+  prize <- sample(c("car", "goat", "goat"))
+  #sets the prize door as the sample where the car is the prize
+  prize_door <- doors[prize == "car"]
+  #the chosen door from contestant
+  my_pick  <- sample(doors, 1)
+  #shows the pick of one of the two remaining doors that is not my pick nor the prize door
+  #(the prize door and my pick could be the same too)
+  show <- sample(doors[!doors %in% c(my_pick, prize_door)],1)
+  #sticks with the original pick at the beginning (setting it to current pick)
+  stick <- my_pick
+  #now stick is equivalent to prize door
+  stick == prize_door
+  #If I choose to switch it chooses the door besides my current pick and the door previously shown
+  switch <- doors[!doors%in%c(my_pick, show)]
+  #takes my choice and lets me choose if I would rather stick with my prize or switch so if I choose "stick" then stick, else switch
+  choice <- ifelse(strategy == "stick", stick, switch)
+  #Whatever my choice is is the door I choose to stick with via line 121
+  choice == prize_door
+}
+
+#I am deciding to stick with my original selection so it takes in "stick" as my strategy
+stick <- replicate(B, monty_hall("stick"))
+mean(stick)
+
+#I am deciding to switch my original selection
+switch <- replicate(B, monty_hall("switch"))
+mean(switch)
+```
+4b. Interpreting the results of the Monty Hall, Monte Carlo simulation, should you stick with the door you first picked, or should you switch doors? Why?
+>
+You should switch the doors. You shoul do this becasue you originally have a 1 in 3 chance at a prize but if you keep you original door it will always be about 1/3 chance. However, if you switch after seeing a "bogus" prize your odds have now changed to 2/3 since you have now essentially "thrown out" one of your original options. 
+
+
+>
+

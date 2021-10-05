@@ -1,0 +1,202 @@
+Lecture 1 - Week 5
+========================================================
+author: 
+date: 
+autosize: true
+
+```{r}
+library(tidyverse)
+```
+Masking
+======
+```{r}
+library(MASS)
+```
+
+Homework 5
+=======
+Finding & Removing NAs
+```{r}
+library(palmerpenguins)
+table(penguins$species, is.na(penguins$sex))
+
+```
+
+
+Reading in Data
+========================================================
+```{r}
+# The tidyverse has a function to read in just about any kind of data, and they all have a similar syntax, so we're going to focus on read_csv. Once you master that, the others should be easy enough.
+?read_csv
+??read_
+cars_df <- read_csv("car-speeds-cleaned.csv")
+
+head(cars_df)
+str(cars_df)
+
+cars_df %>%
+  ggplot(aes(x=Color, y=Speed)) +
+    geom_boxplot()
+
+cars_df <- read_csv("car-speeds-cleaned.csv", na=as.character(-9999))
+
+head(cars_df)
+cars_df %>%
+  ggplot(aes(x=Color, y=Speed)) +
+    geom_boxplot()
+
+typeof(cars_df$State)
+
+cars_df$State <- as.factor(cars_df$State)
+levels(cars_df$State)
+
+cars$made_up_column <- as.numeric(cars$made_up_column)
+
+```
+Refer to chapter 11 for more information on manipulating column types.
+
+
+Accessing Data from APIs
+========================================================
+How APIs Work:
+https://api.census.gov/data/2014/pep/natstprc?get=STNAME,POP&DATE_=7&for=state:*
+
+It can be tricky to access APIs by editing URLs, and then you have to download the data every time... It's easier to use a package for accessing an API. R has packages you can download for making easy API calls to the most common APIs, like the U.S. census Bureau's:
+```{r}
+library(tidycensus)
+
+#Get your own key from the U.S. Census Bureau
+key = "2cd08f6a3497c7ea3cd8f260f0d8f1bc1b07da67"
+#Year
+year <- 2016
+
+ACS_data <- get_acs(geography = "place",
+                variables=c(Total_Population ="B01003_001",
+                            Pop_Over_25 = "B15002_001",
+                            White_Alone_Not_Hispanic = "B03002_003",
+                            Median_Age = "B01002_001",
+                            Bach_Degree = "B06009_005",
+                            Grad_Degree = "B06009_006",
+                            Pov_100_Perc = "B07012_002"
+                            ),
+                keep_geo_vars=TRUE,
+                year=year,
+                output="wide", key = key)
+```
+This API call will automatically access the Census API and pull the data variables we've identified with the Census codes (I had to look those up from the Census documentation).
+
+For more information on tidycensus:
+https://walker-data.com/tidycensus/
+
+
+Web Scraping
+========================================================
+Web sites are messy, and often not intended for web scraping to be applied to them (when possible, APIs are usually preferable). A lot of websites employ security measures to prevent web scraping as well ("Click on these images to prove you're not a robot")
+
+Web pages are written with HTML. Your browser will let you see this source code:
+Ctrl+U(PC); Command+Alt+U (Mac)
+
+Our source web page:
+https://en.wikipedia.org/wiki/Gun_violence_in_the_United_States_by_state
+
+HTML has a built in marker for cells in a table: <td>, which we're going to use to extract the data from that table.
+
+# Grabbing a table from Wikipedia
+```{r}
+# We're going to use the rvest library
+library(rvest)
+
+ url <- "https://en.wikipedia.org/wiki/Gun_violence_in_the_United_States_by_state"
+
+#Reading our web page and turning it into an HTML object
+html <- read_html(url)
+
+class(html)
+
+# Checking out the raw html code in our page
+html_text(html)
+
+# The data we want is somewhere in there, but it's too much of a mess to find this way. We're going to pull out all the elements that match HTML's table identifier
+tab <- html %>% html_nodes("table")
+
+#Now we have a list of table elements that we can index through
+tab
+tab[1]
+
+#Note, only one of our tables really matches the kind of data we're looking for. Table elements are not automatically useful.
+tab[[1]]
+tab[[1]] %>% html_table()
+
+table <- tab[[2]] %>% html_table()
+
+class(table)
+
+colnames(table) <- c("State", "Population", "Murders & Nonnegligent Manslaughter", "Murders", "Gun Murders", "Gun Ownership", "Murder & Nonnegligent Manslaughter Rate (per 100,000)", "Gun Murder Rate (per 100,000)")
+
+View(table)
+
+```
+
+Web Scraping Less Convenient Data with CSS Selectors
+======
+It helps to know something about HTML and CSS when working on web scraping projects. We don't have the time to go over that stuff in this class, but freecodecamp.org has some good tutorials, if you are interested. SelectorGadget is a Google Chrome add-on that makes finding CSS elements easier.
+```{r}
+# Identify the URL
+url <- 'https://www.imdb.com/search/title/?count=100&release_date=2019,2019&title_type=feature'
+
+# read the URL
+movie_page <- read_html(url)
+
+# Now we use the Selector Gadget to find the CSS selector for the elements we want from the page.
+
+rank_data_html <- html_nodes(movie_page, '.text-primary')
+
+# Then we have to convert that data to text for easier reading.
+
+rank_data <- html_text(rank_data_html)
+
+# Let's turn that text into actual numbers:
+rank_data <- as.numeric(rank_data)
+
+```
+
+We'll do the same thing for titles, genre, and rating.
+```{r}
+#Titles
+title_data_html <- html_nodes(movie_page, '.lister-item-header a')
+
+title_data <- html_text(title_data_html)
+
+# Genre
+genre_data_html <- html_nodes(movie_page, ".genre")
+
+genre_data <- html_text(genre_data_html)
+
+# Rating
+rating_data_html <- html_nodes(movie_page, '.ratings-imdb-rating strong')
+
+rating_data <- html_text(rating_data_html)
+
+#Metascore Data
+metascore_data_html <- html_nodes(movie_page, '.metascore')
+metascore_data <- html_text(metascore_data_html)
+
+# Note, our metascore data only has 96 entries, not 100 like it should. 4 movies are missing data! We can't just add 4 NA's to the end of our list of metascores, because that will just list the last four movies as having missing data, not the right movies. So we have to get a little complicated. I had to find every movie with missing data, and make a list.
+missing_metascores <- c(24,92,94,98)
+for (i in missing_metascores) {
+  a <- metascore_data[1:(i-1)]
+  b <- metascore_data[i:length(metascore_data)]
+  
+  metascore_data <- append(a, list("NA"))
+  
+  metascore_data <- append(metascore_data, b)
+
+}
+
+# Put it all into a tibble!
+IMDB_data <- tibble(rank_data, title_data, genre_data, rating_data)
+```
+
+#Usually scraped data requires a lot of cleaning. Keep that in mind when planning/budgeting for these kinds of projects.
+
+

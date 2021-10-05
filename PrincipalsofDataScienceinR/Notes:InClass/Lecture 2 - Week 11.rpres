@@ -1,0 +1,357 @@
+Lecture 2 - Week 11
+========================================================
+autosize: true
+
+Bayesian Classifier
+========
+I forgot to mention on Tuesday, you can train a naive bayes classifier as well, using the same approaches that we used on Tuesday.
+```{r}
+library(tidyverse)
+library(parsnip)
+library(discrim)
+library(rpart)
+library(rpart.plot)
+library(tidymodels)
+library(palmerpenguins)
+library(NHANES)
+
+peng_split <- initial_split(penguins)
+peng_train <- training(peng_split)
+peng_test <- testing(peng_split)
+
+NB_mod <- naive_Bayes() %>%
+  set_engine("naivebayes")
+
+NB_workflow <- workflow() %>%
+  add_formula(species ~ bill_length_mm + bill_depth_mm + flipper_length_mm + body_mass_g) %>%
+  add_model(NB_mod)
+
+peng_spec_fit <- fit(NB_workflow, data = peng_train)
+
+peng_test <- peng_test %>% filter(complete.cases(.))
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+    ggplot(aes(x=species, y = body_mass_g, color=.pred_class)) +
+      geom_point()
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  metrics(truth = species, estimate = .pred_class)
+
+peng_spec_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  filter(complete.cases(.)) %>%
+  mutate(pred_error = ifelse(.pred_class == species, species, "Wrong Guess"), pred_error = as.factor(pred_error)) %>%
+    ggplot(aes(x = body_mass_g, y = flipper_length_mm, color = pred_error)) +
+      geom_point()
+```
+
+Decision Trees
+========================================================
+Trees work through *"recursive partitioning"* - a "divide and conquer" approach that works by splitting the data and splitting it again, then splitting it again, and so on into smaller and smaller subsets, until each subset contains data that is essentially all the same, or very similar.
+
+Example: We have a room full of people from different regions of the U.S., and we are trying to predict which region they are likely to belong to. So we find variables that they vary along, like speech patterns. So, step one might be to separate out everyone who says "y'all". That narrows things down a little bit, but maybe people from both the southeast and the southwest say that sometimes? Then we can divide THAT group up by separating out everyone who refers to soda as "Coke", which helps us separate the southeast from the southwest (made up example). Now we know that if we measure a person's tendency to say "y'all" and to refer to soda as "Coke", we can roughly predict which region they might be from.
+
+Classification Trees
+========
+```{r}
+
+dec_tree_model <- decision_tree(tree_depth = 3) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+dec_tree_fit <- workflow() %>%
+  add_formula(island ~ .) %>%
+  add_model(dec_tree_model) %>%
+  fit(peng_train) %>%
+  pull_workflow_fit()
+  
+rpart.plot(dec_tree_fit$fit)
+
+dec_tree_fit %>%
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  metrics(truth = island, estimate = .pred_class)
+
+dec_tree_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  filter(complete.cases(.)) %>%
+  mutate(pred_error = ifelse(.pred_class == island, island, "Wrong Guess")) %>%
+    ggplot(aes(x = body_mass_g, y = flipper_length_mm, color = pred_error)) +
+      geom_point()
+
+```
+
+Regression Trees
+========================================================
+Using a decision tree model for regression works just like a classifier, but instead of separating out classes, we're separating out numeric outcomes.
+```{r}
+dec_tree_model <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("regression")
+
+dec_tree_fit <- workflow() %>%
+  add_formula(body_mass_g ~ .) %>%
+  add_model(dec_tree_model) %>%
+  fit(peng_train) %>%
+  pull_workflow_fit()
+  
+rpart.plot(dec_tree_fit$fit)
+
+dec_tree_fit %>%
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  metrics(truth = body_mass_g, estimate = .pred)
+
+dec_tree_fit %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  filter(complete.cases(.)) %>%
+    ggplot(aes(x = flipper_length_mm, y = body_mass_g)) +
+      geom_point() +
+      geom_line(aes(x = flipper_length_mm, y = .pred)) +
+      facet_grid(sex ~ .)
+      #facet_grid(sex ~ species)
+```
+
+Pros and Cons of Tree Models
+========================================================
+Tree models are one of my favorite approaches.
+
+Pros
+* Less data preparation (they are very flexible, they can use just about any data you give them)
+* Doesn't require normalization, or assumption of normality
+* Doesn't require data scaling
+* Not really bothered by NAs (doesn't affect the model building process)
+* Collinearity isn't a huge issue (decision trees are nonparametric)
+* Intuitive and easy to explain to non-experts
+
+Cons
+* Susceptible to small changes in the data (can cause large changes in the structure of the decision tree)
+* The math behind them can be quite complex
+* Can be computationally expensive (take a longer time to train)
+* Works better for classification than regression, unless predicting bins is alright.
+
+Pruning
+======
+The process of taking a fully trained tree and trimming back its branches, to prevent overfitting *(go back to classification plot)*.
+
+Ensemble Models
+=======
+The idea: Train many models and get a combined aggregate prediction based on an average, a weighted average, or a mode (majority vote) of each prediction.
+
+Ensemble techniques can be used on just about any kind of model, but they are most common, and work especially well, with decision trees. 
+
+
+Bagging (Bootstrap Aggregating)
+=========
+Bagging is an ensemble method applied to bootstrap resamples - so you take your sample, resample from it (with replacement) many times, fit a decision tree model onto each resample, and then collect aggregate predictions from each of your decision trees.
+
+This approach is intended to reduce overfitting while still getting the predictive benefits of multiple trained models.
+
+```{r}
+library(baguette)
+NHANES_split <- initial_split(NHANES)
+N_train <- training(NHANES_split)
+N_test <- testing(NHANES_split)
+
+
+bag_model <- bag_tree() %>%
+  set_mode("classification") %>%
+  set_engine("rpart", times = 100)
+
+bag_wf <- workflow() %>%
+  add_formula(Education ~ Age + MaritalStatus + SleepTrouble + Work + Alcohol12PlusYr + Depressed + Smoke100 + Weight + Height + Poverty) %>%
+  add_model(bag_model)
+
+bag_fit <- fit(bag_wf, N_train)
+var_scores <- bag_fit %>% pull_workflow_fit()
+
+var_scores$fit$imp %>%
+  slice_max(value, n=10) %>%
+  ggplot(aes(x = reorder(term, -value), y = value)) +
+    geom_col() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    ylab("Variable Importance")
+    
+bag_fit %>%
+  predict(N_test) %>%
+  bind_cols(N_test) %>%
+   metrics(truth = Education, estimate = .pred_class)
+
+bag_fit %>%
+  predict(N_test) %>%
+  bind_cols(N_test) %>%
+  mutate(pred_error = ifelse(.pred_class == Education, Education, "Wrong Guess")) %>%
+  ggplot(aes(x = Weight, y = Height, color = pred_error)) +
+    geom_point()
+
+```
+
+Random Forests
+========
+Random forests apply bagging techniques to the data, but they also randomly sample the variables (as many variables as we tell them to). So one tree might only look at penguin flipper length and body weight, while another tree looks at all variables, and another tree looks at species, sex, and beak depth.
+
+By switching up the variables we include in each tree, the random forest approach also allows us to get a good idea of which variables are most useful across our dataset, by looking at how much they contribute to overall accuracy trends.
+
+This is a powerful technique (sometimes prone to overfitting), and also a bit of a 'black box', as it isn't nearly as easy to explain as a single decision tree.
+
+```{r}
+library(randomForest)
+library(vip)
+
+rf_model <- rand_forest(trees = 100, mtry = 3) %>%
+  set_mode("classification") %>%
+  set_engine("randomForest", importance = TRUE)
+
+#The random forest doesn't like NAs (even though the algorithm itself isn't really affected by them), so we're going to clean our data really quick.
+N_train <- N_train %>%
+  select(c(Education, Age, MaritalStatus, SleepTrouble, Work, Alcohol12PlusYr, Depressed, Smoke100, Weight, Height, Poverty)) %>%
+  filter(complete.cases(.))
+
+N_test <- N_test %>% 
+   select(c(Education, Age, MaritalStatus, SleepTrouble, Work, Alcohol12PlusYr, Depressed, Smoke100, Weight, Height, Poverty)) %>%
+  filter(complete.cases(.))
+
+rf_wf <- workflow() %>%
+  add_formula(Education ~ Age + MaritalStatus + SleepTrouble + Work + Alcohol12PlusYr + Depressed + Smoke100 + Weight + Height + Poverty) %>%
+  add_model(rf_model)
+
+rf_fit <- fit(rf_wf, N_train)
+
+rf_fit %>%
+  predict(N_test) %>%
+  bind_cols(N_test) %>%
+   metrics(truth = Education, estimate = .pred_class)
+
+rf_fit %>%
+  predict(N_test) %>%
+  bind_cols(N_test) %>%
+  mutate(pred_error = ifelse(.pred_class == Education, Education, "Wrong Guess")) %>%
+  ggplot(aes(x = Weight, y = Height, color = pred_error)) +
+    geom_point()
+
+# Checking out the data on our fit random-forest model
+(rf_data <- rf_fit %>% 
+  pull_workflow_fit())
+#Note the fit time at the top - that can be useful sometimes.
+
+#Accessing our confusion matrix
+rf_data$fit$confusion
+
+# Accessing our importance table
+(imp_tbl <- as_tibble(rf_data$fit$importance, rownames = "Variable"))
+
+# Using our importance table to plot the contribution that each variable makes to our aggregate model's overall accuracy.
+  imp_tbl %>%
+  ggplot(aes(x = MeanDecreaseAccuracy, y = reorder(Variable, MeanDecreaseAccuracy))) +
+    geom_point()
+  
+# Using our importance table to plot each variable's contribution to the GINI coefficient (will talk about in class on Tuesday)
+imp_tbl %>%
+  ggplot(aes(x = MeanDecreaseGini, y = reorder(Variable, MeanDecreaseGini))) +
+    geom_point()
+```
+
+Hyperparameter Tuning
+======
+Hyperparameter tuning techniques are often used to determine how many trees should be used for bagging and random forest approaches.
+
+```{r}
+# Once again, the tidymodels folks have developed a better way to do this.
+tune_rf <- decision_tree(cost_complexity = tune(),
+                         tree_depth = tune()) %>%
+            set_engine("rpart") %>%
+            set_mode("classification")
+
+tune_rf
+
+#We can use some pre-defined functions to build a grid with common tuning ranges for cost complexity and tree_depth (the levels = 5 argument tells us that we want 5 options to try for both tree depth and complexity, for a total of 25 combos).
+tree_grid <- grid_regular(cost_complexity(),
+                          tree_depth(),
+                          levels = 5)
+
+#As you may notice, this is basically just like a linear model grid search
+
+#Using cross-validation folds for our tuning (we'll talk about this on Tuesday too)
+cross_val_folds <- vfold_cv(N_train, v = 10)
+
+#Creating our workflow (same as usual)
+tree_wf <- workflow() %>%
+  add_model(tune_rf) %>%
+  add_formula(Education ~ Age + MaritalStatus + SleepTrouble + Work + Alcohol12PlusYr + Depressed + Smoke100 + Weight + Height + Poverty)
+
+#Tuning our workflow on our resamples, with our hyperparameters coming from our grid. (This could take a while)
+tree_tune <- tree_wf %>%
+                tune_grid(resamples = cross_val_folds, grid = tree_grid)
+
+#Collecting metrics from our tuned crossfolds.
+tree_metrics <- tree_tune %>% collect_metrics()
+
+#Let's identify the top 10 models with the best accuracy, and the best ROC_AUC (closest to 1)
+top_5_acc <- tree_metrics %>% filter(.metric == "accuracy") %>% slice_max(mean, n = 5)
+top_5_roc_auc <- tree_metrics %>% filter(.metric == "roc_auc") %>% slice_max(mean, n = 5)
+
+acc <- tree_metrics %>% 
+  filter(.metric == "accuracy") %>%
+  ggplot(aes(x = cost_complexity, y = tree_depth, color = mean)) +
+    geom_point() +
+    geom_point(data = top_5_acc, aes(x = cost_complexity, y = tree_depth), color = "red") +
+    scale_x_continuous(trans="log2") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+
+roc_auc <- tree_metrics %>% 
+  filter(.metric == "roc_auc") %>%
+  ggplot(aes(x = cost_complexity, y = tree_depth, color = mean)) +
+    geom_point() +
+    geom_point(data = top_5_roc_auc, aes(x = cost_complexity, y = tree_depth), color = "red") +
+    scale_x_continuous(trans="log2") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+library(gridExtra)
+grid.arrange(acc, roc_auc)
+```
+
+It looks like a low complexity cost and a high tree depth works out the best for this data!
+
+We can also explore this with a couple of line charts:
+```{r}
+cost_complexity <- tree_metrics %>% 
+  ggplot(aes(x = cost_complexity, y = mean, group = tree_depth, color = tree_depth)) +
+    geom_point() +
+    geom_line() +
+    scale_x_continuous(trans="log2") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))  +
+    facet_grid(.~.metric) +
+    ggtitle("Cost Complexity")
+
+tree_depth <- tree_metrics %>% 
+  ggplot(aes(x = tree_depth, y = mean, group = cost_complexity, color = cost_complexity)) +
+    geom_point() +
+    geom_line() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    facet_grid(.~.metric) +
+    ggtitle("Tree Depth")
+
+grid.arrange(cost_complexity, tree_depth)
+```
+
+Or we can just use the really handy show_best() and select_best() functions!
+```{r}
+tree_tune %>%
+  show_best("roc_auc")
+
+tree_tune %>%
+  select_best("roc_auc")
+```
+
+
+The Complexity Parameter
+=======
+Controls the size of the decision tree (calculates the cost of adding another branch to the tree, and if the benefit in terms of improving the model doesn't excess the cost, then it doesn't add that branch)
+

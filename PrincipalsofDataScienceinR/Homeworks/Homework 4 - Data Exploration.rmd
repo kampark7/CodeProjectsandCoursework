@@ -1,0 +1,97 @@
+---
+title: "Homework 4 - Data Transformation/Exploration"
+output: html_notebook
+author: "Kamryn Parker"
+---
+```{r}
+library(palmerpenguins)
+library(tidyverse)
+data(penguins)
+penguins
+```
+
+1. Create a histogram of female penguin bill length
+```{r}
+df <- penguins
+df <- df %>% filter(sex != "male") #using this filer
+df
+
+ggplot(df, aes(x=bill_length_mm))+
+  geom_histogram(color="black", fill="lightblue") +
+  ylab("Count of Penguin Bills") +
+  xlab("Female Bill Length in mm") +
+  ggtitle("Distribution of Female Penguin Bill Length")
+```
+
+2. Calculate the mean, median, standard deviation, and median absolute deviation of female penguin bill lengths.
+```{r}
+#Mean
+mean(df$bill_length_mm)
+#Median
+median(df$bill_length_mm)
+#Standard Deviation
+sd(df$bill_length_mm)
+#Median Absolute Deviation
+mad(df$bill_length_mm)
+```
+
+3a. Remove the outlier value in female bill lengths (there's one female penguin in the dataset with a bill length of 58mm) and recalculate the mean, median, standard deviation (SD), and median absolute deviation (MAD) of female penguin bill lengths.
+```{r}
+df2 <- df
+df2 <- df2 %>% filter(bill_length_mm != "58")
+df2
+#Mean
+mean(df2$bill_length_mm)
+#Median
+median(df2$bill_length_mm)
+#Standard Deviation
+sd(df2$bill_length_mm)
+#Median Absolute Deviation
+mad(df2$bill_length_mm)
+```
+3b. Which summary measure of centrality (mean vs median) was most influenced by the outlier? (Meaning, it changed the least when the outlier was removed). Which summary measure of variance (SD vs MAD) was most influenced by the outlier? Why?
+>
+The median was the most influenced by the outlier becasue it changed the least amount. It went from 42.8 to 42.75 which is only a 0.05 chnage comapred to the 0.9697 change in the mean. The MAD value was influeneced the msot because it saw the least amount of change. This makes sense becasue looking up at our histogram before we can see that there is almost a bi-modial curve compared to a normal distribution where a standard deviation would be a better fit.
+>
+
+4. Create a density plot for female penguin bill lengths
+```{r}
+df2 %>%
+  ggplot(aes(x=bill_length_mm, fill=sex)) +
+    geom_density(adjust=1, alpha=0.4) +
+    ylab("Density of Penguin Bills") +
+    xlab("Female Bill Length in mm") +
+    ggtitle("Density of Female Penguin Bill Length")
+```
+
+5. Create a QQ (quantile-quantile) plot to determine if the distribution of female bill lengths follows the shape of the normal curve (you can do this with the geom_qq() function as a ggplot layer).
+```{r}
+library("car")
+df2 %>%
+    ggplot(aes(sample=scale(bill_length_mm))) +
+      geom_qq()
+
+#found function using the cars library that writes a normal curve and boundaries which helped me determine if it was a normal curve or not
+qqPlot(df2$bill_length_mm)
+```
+
+6. Based on the histogram, density plot, and qqplot plot you've created, are female bill lengths distributed in the shape of a normal curve? Give your answer, and explain.
+>
+I would say that the data does not follow the terms for a normal distribution curve. You can see there is a dip in the density and histogram plot inbetween the two high points of data. The qq plot follows a curve similar to an x^3 type fo distribution and not a normal curve straight line like it should be to determine it as a normal curve.
+>
+
+7. Make the same density plot as in question 2, but now, color the fill value by species (with an alpha value of 0.4):
+```{r}
+#Density of the bill_length_mm density of female penguins by species
+df2 %>%
+  ggplot(aes(x=bill_length_mm, fill=species)) +
+    geom_density(adjust=1, alpha=0.4)+
+    ylab("Desnity of Penguin Bills") +
+    xlab("Female Bill Length in mm") +
+    ggtitle("Desnity of Female Penguin Bill Length by Species")
+```
+
+8. How does the plot you made in question 5 help answer the question about bill length distribution? Answer in a few sentences.
+>
+The plot can help to explain the distribution becasue it takes a sample and draws a correlation between in and the normal distribution. The scale tries to scale it around our mean and standard devition but from what we know after checking the changes in the summary in question 2 we know that the centrality measure best fit for this data is the median and the summary of variance is better with the MAD value. So when you try to use the qqplot you also have to be aware of your measures that best fit the data so you can see that the sample correlation values in the qqplot do not follow a normal distribution line. There are parts of it that skew at the top and bottom so you know you are not looking for a normal distribution. 
+>

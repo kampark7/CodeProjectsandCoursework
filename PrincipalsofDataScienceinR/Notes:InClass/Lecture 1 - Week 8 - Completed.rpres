@@ -1,0 +1,318 @@
+Lecture 1 - Week 8
+========================================================
+author: 
+date: 
+autosize: true
+
+```{r}
+library(palmerpenguins)
+library(tidyverse)
+```
+
+
+Continuous Probabilities
+======
+Remember in one of your past homeworks, you looked at the distribution of penguin measurements? One of the takeaways was that it's best to break distributions up by species, to get distributions that make sense (and look more normally shaped):
+```{r}
+penguins %>%
+  ggplot(aes(flipper_length_mm, fill=species)) +
+    geom_histogram() +
+    facet_wrap(.~species)
+```
+Let's get the parameters we need to assign a normal curve to flipper length for each of these species:
+```{r}
+penguins %>%
+  group_by(species) %>%
+  summarize(m = mean(flipper_length_mm, na.rm=TRUE), sd = sd(flipper_length_mm, na.rm=TRUE))
+#Write these down
+```
+
+
+Monte Carlo Sampling of Continuous Data
+=======
+```{r}
+#We're going to use the normal curves we've trained on each of our penguin species, to simulate new data.
+peng_sample <- function(){
+  #Take a species sample
+ species <-  sample(penguins$species, 1)
+ #Depending on the species in the sample, we sample from the appropriate fitted curve
+ flipper_length <- case_when(species == "Adelie" ~ rnorm(1, mean=190, sd=6.54),
+                     species == "Chinstrap" ~ rnorm(1, mean=196, sd=7.13),
+                     species == "Gentoo" ~ rnorm(1, mean=217, sd=6.48))
+ # Join our species with our simulated flipper length
+ output <- c(species, flipper_length)
+ #Return our two data points
+ return(output)
+}
+#Get 50 penguin samples, with accompanying flipper lengths.
+#Use do.call to apply rbind to every element from our replicate function, to put them together into columns (this process works better when simplify = FALSE)
+samples <- 500
+data <- do.call("rbind", replicate(samples, peng_sample(), simplify= FALSE))
+#Name the columns
+colnames(data) <- c("Species", "Flipper_Length")
+#Convert our columns into a tibble.
+data <- as.tibble(data)
+#Change species back into a labeled factor.
+data$Species <- factor(data$Species, labels = c("Adelie", "Chinstrap", "Gentoo"))
+
+```
+
+Plotting our simulated data
+=======
+```{r}
+ggplot(data, aes(x=Flipper_Length, fill=Species)) +
+  geom_histogram() +
+  facet_grid(Species~.) +
+  theme(legend.position="None")
+```
+
+Summary Table
+======
+```{r}
+# Building a summary table
+data %>%
+  group_by(Species) %>%
+  summarize(n = n(), sd= sd(Flipper_Length),mean = mean(Flipper_Length)) %>%
+  #qt is the quartile function for the Student's T distribution, which is basically a normal curve that takes sample size into account. The T distribution is commonly used to estimate the mean of a normally distributed population, especially when the sample size is small, and the population standard deviation is unknown.
+  mutate(T_error = qt(0.975, df=n-1)* (sd/sqrt(n)),
+         T_left = mean-T_error,
+         T_right = mean+T_error,
+         N_error = qnorm(0.975)* (sd/sqrt(n)),
+         N_left = mean-N_error,
+         N_right = mean+N_error) %>%
+  View()
+
+#The Student's T curve is a way of estimating the distribution (and thus confidence intervals) of limited samples. Larger samples are easier to use a normal curve so much.
+
+#Illustrating the Student's T distribution
+ggplot(data.frame(x=c(-3,3)), aes(x=x)) +
+  stat_function(aes(color="Normal"), fun=dnorm, args(list(0, 1)), linetype="dashed", size=1.25) +
+  stat_function(aes(color="1 DF"), fun=dt, args=list(1), size=1.25) +
+  stat_function(aes(color="2 DF"), fun=dt, args=list(2), size =1.25) +
+  stat_function(aes(color="5 DF"), fun = dt, args=list(5), size=1.25) +
+  stat_function(aes(color="10 DF"), fun= dt, args=list(10), size=1.25) +
+  scale_color_discrete(breaks=c("Normal","1 DF", "2 DF", "5 DF", "10 DF"))
+#Note - the larger your sample size, the more your T-distribution looks like a normal distribution. (Re-run code with 150 samples)
+```
+
+Bootstrap Sampling of Continuous Data
+======
+
+Let's start by sampling from our Adelie sample, specifically, 10,000 times, and looking at the distribution of means.
+*This form of Monte Carlo simulation is called bootstrapping - it uses our current data to simulate additional subsamples*
+```{r}
+adelie_sampling <- function(){
+  
+ flipper_sample <-  penguins %>%
+    filter(species == "Adelie") %>%
+    pull(flipper_length_mm) %>%
+    sample(30, replace=TRUE)
+  output <- c(mean(flipper_sample, na.rm=TRUE), sd(flipper_sample, na.rm=TRUE))
+  return(output)
+}
+adelie_sampling()
+
+repeats = 10000
+sample_means <- do.call("rbind", replicate(repeats, adelie_sampling(), simplify=FALSE))
+
+colnames(sample_means) <- c("Mean", "Standard Deviation")
+sample_means <- as_tibble(sample_means) %>% rowid_to_column("Sample_Num")
+
+ggplot(sample_means, aes(x=Mean)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept=mean(Mean)), size=2, color="red")
+
+```
+*Central Limit Theorem* - when the number of independent draws is large, the probability distribution of the sum (or mean) of the independent draws is approximately normal.
+
+Bootstrapped Confidence Intervals
+======
+Looking at this distribution of sample means, we can examine the accuracy/precision of the sample mean. We can now use this distribution to create a confidence interval:
+```{r}
+sample_means %>%
+  summarize(mean_of_means = mean(Mean),
+            sd_of_means = sd(Mean))
+
+quantile(sample_means$Mean, probs=c(0.025, 0.975))
+#This means that 95% of sample means should fall between 187.6 and 192.3
+quantile(sample_means$Mean, probs=c(0.05, 0.95))
+#This means that 90% of sample means should fall between 188 and 191.9
+# The more confidence we require, the larger our confidence interval becomes.
+```
+
+Note: Even though our data in this case is pretty normally distributed, we never had to make that assumption!
+
+Using our Monte Carlo distribution to talk about continuous probabilities
+=======
+We still need to use a normal distribution function to calculate probabilities.
+
+By isolating the Adelie species, we have already created a conditional probability function to calculate Pr(flipper_length_mm|species = Adelie) - we can use the normal curve function we fitted above to calculate this for any given flipper_length.
+
+To calculate Pr(flipper_length_mm|species = Chinstrap), we would need to calculate a normal curve for that subset of the data (although we wouldn't actually need to mess with the bootstrap - that was mostly for demonstration purposes).
+
+Continuous Bayes Theorem
+======
+Works the same way, but with pdfs. So,
+Pr(species = Gentoo | flipper_length_mm = x) = Pr(flipper_length_mm|species = Gentoo)*P(Species = Gentoo)/P(flipper_length_mm)
+
+More Monte Carlo Simulations
+======
+Monte Carlo simulations can get quite complex, but we're gonna stick with a simple example beyond the basic sampling simulation we've already done. Basically, a Monte Carlo simulation lets you repeat some kind of probability event to see how it turns out over many, many repetitions/variations.
+
+For example, imagine you stick $100 bucks in a slot machine, and pull the handle. The wheel spins, and randomly spits out a number, -1,0, or 1. If the number is -1, you lose your money. If it's 0, you get your money back, but don't win anything more. If it's 1, you get 200 back (your money plus another 100 dollars). 
+
+Let's create a Monte Carlo simulation to see if it's worth it to play this machine multiple times.
+(In this case, we could use some mathematical calculations to figure out if this machine is worth it, but a simulation is more fun)
+```{r}
+slot_play <- function(win_odds, lose_odds, loss_cost, win_payout){
+  neutral_odds <- 1 - (win_odds + lose_odds)
+  number <- sample(c(-1, 0, 1), 1, prob=c(lose_odds, neutral_odds, win_odds))
+ #case_when is a handy way to specify multiple if-else statements.
+  money <- case_when(number == -1 ~ -1 * loss_cost,
+                  number == 0 ~ 0,
+                  number == 1 ~ win_payout)
+  output <- c(number, money)
+  return(output)
+}
+
+monte_carlo <- function(num_plays, win_odds, lose_odds, loss_cost, win_payout){
+  all_plays <- do.call("rbind",replicate(num_plays, slot_play(win_odds, lose_odds,           loss_cost, win_payout), simplify=FALSE))
+
+  colnames(all_plays) <- c("Number", "Winnings")
+
+  all_plays <- as.tibble(all_plays)
+  all_plays <- all_plays %>%
+    rowid_to_column("Play_Num") %>%
+    mutate(cumulative_total = 1000 + cumsum(Winnings))
+
+  return(all_plays)
+}
+
+
+num_plays <- 100
+win_odds <- 0.33
+lose_odds <- 0.33
+loss_cost <- 100
+win_payout <- 100
+
+#Testing out our slot play function
+slot_play(win_odds, lose_odds, loss_cost, win_payout)
+
+#Running our Monte Carlo function, to simulate playing our machine 100 times.
+all_plays <- monte_carlo(num_plays, win_odds, lose_odds, loss_cost, win_payout)
+
+#Plotting our outputs
+all_plays %>%
+  ggplot(aes(x= Play_Num, y= cumulative_total)) +
+  geom_point() + 
+    geom_smooth()
+#Highlight the above code and re-run a few times.
+
+#Getting a quick summary
+all_plays %>%
+  summarize(wins_over_losses = sum(Number),
+            mean_winnings = mean(Winnings),
+            total_winnings = sum(Winnings)
+            )
+
+#Creating a new dataframe with running means for winnings and machine outputs
+run_plays <- all_plays %>%
+  mutate(running_mean = cumsum(Winnings)/seq(along=Winnings),
+            running_out_mean = cumsum(Number)/seq(along=Number))
+
+run_plays
+```
+
+Expectation
+=======
+The expectation of a random variable is a number that attempts to capture the center of that random variable's distribution (the average of all possibilities). You can approach it with the running average of many independent samples. For context, the expectation value of a fair dice is 3.5 - if you roll a dice many, many times, the average value you get will approach 3.5. Here's an illustration using our Monte Carlo sample:
+```{r}
+library(gridExtra)
+#Visualizing expected value for earnings
+earnings <- ggplot(run_plays, aes(x=Play_Num, y=running_mean)) +
+  geom_line() +
+  geom_hline(aes(yintercept = mean(Winnings), color="red", alpha=0.5)) +
+  theme(legend.position="none") +
+  ggtitle("Expected Earnings")
+
+#Visualizing expected value for the number the machine spits out
+exp_number <- ggplot(run_plays, aes(x=Play_Num, y=running_out_mean)) +
+  geom_line() +
+  geom_hline(aes(yintercept = mean(Number), color= "red", alpha=0.5)) +
+  theme(legend.position="none") +
+  ggtitle("Expected Number")
+
+grid.arrange(exp_number, earnings, ncol= 1)
+```
+
+Law of Large Numbers/Law of Averages
+=======
+For Monte Carlo simulations, 1000 replications is *often* enough to ensure that your expected value will level off and your standard error will be relatively close to 0. Larger numbers = smaller standard error (the standard deviation divided by the square root of the sample size).
+```{r}
+test_seq <- rnorm(10000, mean=100, sd=50)
+se <- function(x) {sd(x)/sqrt(length(x))}
+se(test_seq)
+
+```
+The standard error is a measure of the statistical accuracy of a population estimate, derived from a sample. (Kinda like a T-distribution is a measure of how much a sample is expected to reflect a normally distributed population).
+
+
+Monte Carlo Simulations of Monte Carlo Simulations
+========
+If we run our Monte Carlo simulation above a few times, we can see that our outcome can vary - only running 100 plays in each simulation still leaves room for random change to shape our outcome, and our expected values. 
+We could just increase our plays to 100,000, but maybe there are limits. Maybe we can't afford to blow a million dollars to test if this machine pays off, or maybe we don't have the time to play this machine 100,000 times. Maybe we want to see what the distribution of outcomes over multiple plays might be, to judge the average outcome/variance over multiple sessions of 100 plays? Whatever the reason (and there are many good ones), we're going to need to improvize.
+
+Let's get fancy now, to see how multiple simulations of our simulations might play out.
+```{r}
+num_plays <- 100
+win_odds <- 0.33
+lose_odds <- 0.33
+loss_cost <- 100
+win_payout <- 100
+
+#Replicating our Monte Carlo experiment 1,000 times, to get 1,000 dataframes.
+simulations <- replicate(1000, monte_carlo(num_plays, win_odds, lose_odds, loss_cost, win_payout), simplify=FALSE)
+
+#Putting our simulations into a nested dataframe
+monte_carlo_df <- tibble(simulations) %>% rowid_to_column("Simulation_Num")
+
+#Modeling each simulation with a linear model
+library(splines)
+library(broom)
+monte_carlo_df <- monte_carlo_df %>%
+  mutate(models = map(simulations, ~ lm(cumulative_total ~ ns(Play_Num,2), data = .)),
+         #Creating a total winnings column
+         total_winnings = map_dbl(simulations, ~ (sum(.$Winnings))),
+         #Using augment (from broom) to add fitting values and residuals.
+         augment = map(models, augment))
+
+#Plotting each of our individual outcomes as a linear model
+monte_carlo_df %>%
+    unnest(augment, simulations) %>%
+ggplot(aes(x = Play_Num, y = .fitted)) +
+  geom_line(aes(group = Simulation_Num), alpha=0.33) +
+  geom_smooth()
+#This is one way to visualize all of the more likely permutations of our machine over 100 plays.
+
+# Plotting a histogram of total winnings from each play
+h_plot <- monte_carlo_df %>%
+  ggplot(aes(total_winnings)) +
+    geom_histogram() +
+    geom_vline(aes(xintercept=mean(total_winnings)), color="red", size=2)
+
+resample_mean <- mean(monte_carlo_df$total_winnings)
+resample_sd <- sd(monte_carlo_df$total_winnings)
+
+#Plotting a density plot of total winnings, with a normal curve fitted over it.
+d_plot <- monte_carlo_df %>%
+  ggplot(aes(total_winnings)) +
+    geom_density() +
+    geom_vline(aes(xintercept=mean(total_winnings)), color="red", size=2) +
+    stat_function(fun = dnorm, n = 101, args = list(mean = -43.9, sd=808.7997), color = "red", alpha = 0.5)
+
+grid.arrange(h_plot, d_plot)
+
+```
+Overall, we've probably got a 50/50 shot at winning/losing money.
+
+Note that we just came up with another example of the *Central Limit Theorem* - if you take sufficiently large random samples (larger than 30) from a population (with replacement) then the distribution of sample means (or some other sample summary) will be approximately normally distributed, even if the population is not. This is a fundamental concept behind traditional stats, since it explains why so many stats techniques are comfortable assuming normality, even when the sample data itself isn't technically normal.

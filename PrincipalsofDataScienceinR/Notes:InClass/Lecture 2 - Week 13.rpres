@@ -1,0 +1,262 @@
+Lecture 2 - Week 13
+========================================================
+author: 
+date: 
+autosize: true
+
+```{r}
+library(tidyverse)
+```
+
+
+Unsupervised Learning
+========================================================
+
+So far, all of the models that we've talked about have required us to supervise them. We tell them what to look for, and we check to see how accurate they are. We can train supervised models because we have some data where we KNOW the truth. In other words, we have *labeled* data that lets us check how accurate our model is.
+
+Unsupervised machine-learning algorithms don't require us to know what we're looking for (to some degree), and they don't require labels.
+
+Pros: Good for exploring data that we might not know that well. Can be used on unlabeled data.
+Cons: Not great for verifying or quantifying relationships (that's what supervised learning is for), no measure of "accuracy"
+
+Uses/examples:
+* Exploration
+* Anomaly Detection
+* Generating principal components that capture broad variance trends in the data
+* Neural networks
+
+We're going to focus on clustering in this class, which is primarily used for exploration (and a little bit for anomaly detection).
+
+Hard & Soft Clustering
+=======
+* Hard Clustering - Assumes that each data point must belong to one *and only one* cluster
+* Soft Clustering - Assumes that data points may belong to multiple, overlapping clusters (less common)
+
+4 Types of Clustering
+=========
+
+* Centroid-Based Clustering: Starts with a certain number of randomly placed 'centroids' and adjusts where they are placed to best identify clusters in the data. (K-means is the dominant algorithm in this family). 
+
+* Connectivity-Based/Hierarchical Clustering: Assumes that data points that are closer to each other must be more related than data points that are farther apart. Different clusters form at different distances, which creates a 'heirarchy' of clusters that researchers can prune. (Reminiscent of decision trees)
+
+* Distribution-Based Clustering: Based on statistical distribution modeling (normal distribution, for example) - groups data points into clusters based on how probable it is that they belong to a certain distribution.
+
+* Density-Based Clustering: Searches the data space for areas of varied density of data points - areas with higher density are broken into clusters, and outliers are counted as noise or border points.
+
+Picking a Clustering Algorithm
+=======
+There aren't any hard rules to picking the right clustering algorithm. It's mostly a judgement call that the researcher has to make, taking into account the size of the dataset, the potential shape of the clusters (round or not), and the specific number of clusters that might be expected. It also doesn't hurt to try more than one approach, and see what happens.
+
+Showing the Data That We're Going to Cluster
+========================================================
+
+```{r}
+data(USArrests)
+
+qplot(Murder, UrbanPop, data = USArrests)
+
+#We need to scale our data, so one variable does not contribute more to our cluster than another.
+USArrests <- scale(USArrests)
+USArrests <- as.tibble(USArrests, rownames = NA)
+
+qplot(Murder, UrbanPop, data = USArrests)
+```
+
+K-Means Clustering - Centroid-Based
+========================================================
+K-Means is one of the most popular clustering algorithms.
+
+K-Means clustering starts by randomly placing K points on the data, and then re-adjusts them over multiple iterations until the sum of squared distances  (one of the same loss functions used in fitting a linear model) is minimized for each point. *Show animation in web app.*
+
+*Note - unfortunately, tidymodels isn't really focused on unsupervised learning, as far as I can tell, so we're going to use other packages. But most of the approaches to clustering are pretty simple, so the code should be short*
+```{r}
+K_mean_vis <- function(K){
+(clusters <- USArrests %>%
+  dplyr::select(Murder, UrbanPop) %>%
+  kmeans(centers = K))
+
+USArrests$clusters <- as.factor(clusters$cluster)
+
+ggplot(USArrests, aes(x = Murder, y = UrbanPop, color = clusters)) +
+  geom_point()
+}
+
+K_mean_vis(3)
+
+```
+
+Looking at some of the pieces in our clusters object:
+* Cluster Means
+* Cluster Vector
+* Within-Cluster Sum of Squares by Cluster
+* Additional Components
+  * centers (center point of each cluster)
+  * tot.withinss (the total sum of squares across all clusters - an overall picture of cluster fit to the data)
+```{r}
+clusters$tot.withinss
+```
+
+"Tuning" our K-Means Clusters
+========
+```{r}
+K_mean_eval <- function(K_list){
+  df <- USArrests %>%
+    dplyr::select(Murder, UrbanPop)
+  
+  eval_vector <- vector()
+  K_vector <- vector()
+  
+  for (K in K_list){
+    clusters <- df %>%
+      kmeans(centers = K)
+    
+    eval_vector <- append(eval_vector, clusters$tot.withinss)
+    K_vector <- append(K_vector, K)
+  }
+  return(tibble(K_vector, eval_vector))
+}
+
+K_list <- seq(1, 10)
+K_mean_eval(K_list) %>%
+  ggplot(aes(x = K_vector, y = eval_vector)) +
+    geom_point() +
+    geom_line() +
+    geom_vline(xintercept = 3)
+```
+Unlike hyperparameter tuning on supervised models, we don't have a solid measure of "truth" to compare our hyperparameters to, a lower SS is not necessarily good, so it's up to our own personal judgement where we should draw the line regarding how many K-centroids to use.
+
+Visualizing our Cluster Outputs
+=======
+```{r}
+K_list <- seq(2, 7)
+K_tuning <- K_mean_eval(K_list)
+
+plots <- list()
+
+for (i in 1:nrow(K_tuning)){
+  plot <- K_mean_vis(K_tuning$K_vector[i]) +
+    ggtitle(paste(K_tuning$K_vector[i], ":", K_tuning$eval_vector[i]))
+  
+  plots[[i]] <- plot
+}
+
+grid.arrange(grobs = plots)
+
+```
+
+Connectivity-Based/Hierarchical Clustering
+========
+This algorithm doesn't ask you to guess how many clusters you need - instead, you decide where to 'prune' the tree that it creates. *Show animation in web app*
+
+```{r}
+library(cluster)
+
+# Dissimilarity Matrix
+(dm <- dist(USArrests, method = "euclidean"))
+#Using our distances to calculate our clusters
+hier_cluster <- hclust(dm, method = "complete")
+
+#Plotting our dendrogram
+plot(hier_cluster, cex = 0.6, hang = -1)
+
+# Plotting pruned groups over our dendrogram
+rect.hclust(hier_cluster, k = 5)
+```
+
+A Note on Methods
+=======
+* *Maximum or complete linkage clustering:* It computes all pairwise dissimilarities between the elements in cluster 1 and the elements in cluster 2, and considers the largest value (i.e., maximum value) of these dissimilarities as the distance between the two clusters. It tends to produce more compact clusters.
+
+* *Minimum or single linkage clustering:* It computes all pairwise dissimilarities between the elements in cluster 1 and the elements in cluster 2, and considers the smallest of these dissimilarities as a linkage criterion. It tends to produce long, “loose” clusters.
+
+* *Mean or average linkage clustering:* It computes all pairwise dissimilarities between the elements in cluster 1 and the elements in cluster 2, and considers the average of these dissimilarities as the distance between the two clusters.
+
+* *Centroid linkage clustering:* It computes the dissimilarity between the centroid for cluster 1 (a mean vector of length p variables) and the centroid for cluster 2.
+
+* *Ward’s minimum variance method:* It minimizes the total within-cluster variance. At each step the pair of clusters with minimum between-cluster distance are merged.
+
+**Source: https://uc-r.github.io/hc_clustering)
+
+
+Pulling Groups out of our Hierarchical Cluster
+=========
+```{r}
+(sub_groups <- cutree(hier_cluster, k = 5))
+
+hier_clust_df <- tibble(USArrests, sub_groups)
+
+ggplot(hier_clust_df, aes(x = Murder, y = UrbanPop, color = as.factor(sub_groups))) +
+    geom_point()
+```
+
+
+Distribution-Based Clustering
+========
+Gaussian Mixture Models iteratively fit a set of normal curves around randomly placed centroids, then calculate the mean and variance for each Gaussian 'cluster', and then calculates the probability of each data point in that cluster actually belonging to that cluster, according to the probabilities defined by our Gaussian (normal) curve. This continues until we have maximized the likelihood that each point belongs to its assigned cluster. *See animation in web app*
+
+Note: Because 3d normal curves are round/oval, they can't account well for clusters that are not roughly round/oval shaped. K-mean clusters tend to have this weakness as well.
+
+```{r}
+library(mclust)
+
+fit <- Mclust(USArrests, G = 3) 
+
+plot(fit, what = "density")
+plot(fit, what = "classification")
+plot(fit, what = "uncertainty")
+
+#BIC stands for Bayesian Information Criterion. A higher BIC is generally better.
+BIC <- mclustBIC(USArrests)
+plot(BIC)
+```
+
+Density-Based Clustering
+========
+DBSCAN is the most popular density-based clustering algorithm (and it's one of the most widely cited algorithms in academia). DBSCAN stands for "Density-Based Spatial Clustering of Applications with Noise".
+
+DBSCAN doesn't require you to specify the number of clusters, but it requires you to specify:
+* the minimum number of data points that counts as a cluster (minpts), and 
+* the size of the neighborhoods that it considers (epsilon).
+
+Using these measures, DBSCAN calculates core points, directly reachable points, reachable points, and outliers.
+* Core points have at least minpts number of points within epsilon distance.
+* Directly reachable points must be within epsilon distance of a core point.
+* Reachable points must be within epsilon distance of another reachable point (starting with a directly reachable point).
+* Outliers are not core points or reachable in any way.
+
+With these definitions, a cluster must meet two requirements:
+* All points within the cluster must be reachable (directly or through another point) with all other points in the cluster.
+* Any point that is reachable from any other point in the cluster must belong to that cluster.
+
+*Show animation*
+
+DBSCAN is actually quite simple, it just relies on some logical rules, without the math that other clustering algorithms require. Despite its simplicity, DBSCAN is effective, and handles irregular clusters and outliers very well.
+
+DBSCAN Example
+=======
+```{r}
+library(fpc)
+library(dbscan)
+db_cluster <- fpc::dbscan(USArrests, eps = 1, MinPts = 3, method = "hybrid")
+plot(db_cluster, USArrests, main = "DBSCAN")
+#Note that core and border points have different symbols. Triangles are core points, circles are border points, and black circles are outliers.
+```
+
+Tuning DBSCAN
+=======
+```{r}
+# k = minpts
+dbscan::kNNdistplot(USArrests, k= 3)
+
+fpc::dbscan(USArrests, eps = 1.5, MinPts = 3) %>%
+  plot(USArrests, main = "DBSCAN")
+
+#Our "ideal" eps value gives us un-useful results! Why is this?
+#Well, kNNdistplot calculates the distance of each point from its k-nearest-neighbors, and in this case, our data is compact enough that the eps value which minimizes that the most happens to be the one that clumps all the data together. But this isn't actually useful for us. So we have to apply some judgment here.
+
+fpc::dbscan(USArrests, eps = 1.1, MinPts = 3) %>%
+  plot(USArrests, main = "DBSCAN")
+#Note that this arrangement gives us more outliers, which our tuning plot doesn't like, but it's also more interesting.
+```
+
+Note: DBSCAN can be used to predict labeled data, like a classifier model. But it's not as commonly used for that.

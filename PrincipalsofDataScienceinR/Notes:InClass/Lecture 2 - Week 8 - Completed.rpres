@@ -1,0 +1,366 @@
+Lecture 2 - Week 8
+========================================================
+autosize: true
+
+```{r}
+library(dslabs)
+library(tidyverse)
+```
+
+
+Statistical Inference
+==========
+Inference is the part of statistics that helps distinguish patterns arising from signal from those arising from chance.
+
+Frequentist inference:
+*Assumes that any given experiemnt can be considered as one of an infinite sequence of possible repetitions of the same experiment, each capable of producing statistically independent results
+
+* Unknown parameters (such as population mean, for example), are assumed to have fixed values that are not capable of being treated as random variates, unable to be associated with probabilities themselves.
+
+* The frequentist approach attempts to reach a 'true or false' conclusion, from a significance test (p-value), or a confidence interval that is expected to cover a true estimated valued.
+
+
+Let's go back to our simulated sample of people's political affiliations 
+========================================================
+
+```{r}
+people <- sample(c("Republican", "Democrat", "Other", "Undecided"), 100000, replace=TRUE, prob = c(0.45, 0.47, 0.02, 0.06))
+
+sample_poll <- sample(people, 100)
+
+sample_heights <- sample(heights$height, 100)
+sample_skew_heights <- rnorm(100, mean= 69.5, sd=4)
+```
+
+Inferring from our sample
+==========
+We want to estimate population parameters from the qualities of our sample.
+X-bar is what we call the mean of our sample, which is used to estimate the mean of the population. 
+
+The expected value of X-bar is p - E(X-bar) = p
+The standard error of X-bar is the square root of p(1-p)/N. As the N of our sample goes up, the standard error goes down. Unfortunately, it can be quite expensive to get a sample large enough to minimize standard error to the point of overwhelming confidence, so sometimes we have to compromise.
+
+```{r}
+sample_poll <- as.tibble(sample_poll)
+sample_poll %>%
+  count(value) %>%
+  mutate(proportion = n/sum(n))
+
+
+#The X-bar of Democrats in our sample is 0.4, or 40%  (remember, the mean of a binary variable is the percentage)
+#Therefore, the standard error of our Democrat estimation is:
+sqrt(0.41*(1-0.41))/sqrt(100)
+
+#The standard deviation of a sampling distribution is its standard error.
+
+#We can build a confidence interval from our mean and standard errors, along with the 1.96 Z-score, which corresponds to 1.96 standard deviations within the mean (95% of the area of our normal distribution).
+#Lower bound
+qnorm(0.975)
+0.41 - 1.96*0.05
+#Upper bound
+0.41 + 1.96*0.05
+```
+Sample confidence intervals are often misunderstood. What this estimates is that if we were to take 100 different samples, and compute a 95% confidence interval for each sample, then approximately 95 of the 100 confidence intervals would contain the true mean. Of course, in this case we don't have to take that risk - we can test with resampling!
+
+Confidence Intervals
+=========
+```{r}
+poll_fun <- function(){
+  sample_poll <- sample(people, 100)
+  
+  sample_poll <- as.tibble(sample_poll)
+output <- sample_poll %>%
+  count(value) %>%
+  mutate(proportion = n/sum(n),
+         se = sqrt(proportion*(1-proportion))/sqrt(100)) %>%
+  filter(value=="Democrat") %>%
+  select("n", "proportion", "se") %>%
+  as.matrix()
+
+return(output)
+}
+
+sample_errors <- do.call("rbind", replicate(100, poll_fun(), simplify=FALSE))
+
+sample_errors <- sample_errors %>%
+  as.tibble() %>%
+  rowid_to_column() %>%
+  mutate(lower_bound = proportion - 1.96*se,
+         upper_bound = proportion + 1.96*se)
+
+ggplot(sample_errors) +
+  geom_line(aes(x=rowid, y= lower_bound)) +
+  geom_line(aes(x=rowid, y= upper_bound)) +
+  geom_hline(yintercept=0.46, color="red", size=2)
+
+sample_errors %>%
+  mutate(in_conf_int = ifelse(0.46 > upper_bound | 0.46 < lower_bound, "Outside", "Inside")) %>%
+  count(in_conf_int) %>%
+  mutate(prop = n/sum(n))
+
+```
+It turns out that our initial confidence interval was roughly correct!
+
+It's also worth noting though, that a few samples did NOT have confidence intervals that covered our true mean. If we had bad luck and happened to collect one of those samples on our first try, we might well have come to some incorrect conclusions, thus highligthing the importance of replication, and making sure our samples are representative (large, and random, generally).
+
+Note, that if we want our confidence intervals to be narrower, we can up our sample size (if it's practical/affordable), but our likehoods will still be the same for whatever our upper and lower bounds are.
+
+Sample Error Illustration
+========
+```{r}
+sim_sample_sizes <- tibble(sample_sizes = seq(5, 100, by=1))
+
+se <- function(prob, sample) sqrt(prob*(1-prob)/sample)
+
+sim_sample_sizes %>%
+  mutate(std_error = map_dbl(sample_sizes, se, prob=0.5)) %>%
+  ggplot(aes(x=sample_sizes, y=std_error)) +
+    geom_line()
+
+```
+
+A Summary of Confidence Intervals
+=======
+Three types:
+* Normal Curve Based (Use when population std. deviation is known, and/or sample size is large)
+* Student's T Distribution Based (Use when population std. deviation is unknown and/or sample size is small)
+*Bootstrap Resampling (Use when the theoretical distribution of a statistic of interest is complicated or unknown. Often more flexible/accurate, especially with summary stats other than the mean, but also more computationally expensive/time-consuming)
+
+*There are many techniques/approaches under the bootstrapping umbrella - we've only scratched the surface.*
+
+Note: A bad sample will have a bad confidence interval, no matter which method you use. 
+
+Now, the fun part: hypothesis testing.
+======
+To compare a null hypothesis to an alternative hypothesis, we need to calculate the probability of our sample data occurring if our null hypothesis is true. This is our p-value.
+
+Here's a simple example. If we have a coin, and we want to test whether it is fair (50/50 chance of heads/tails) or not, we can run an experiment - we'll flip it 10 times, look at the outcome, and compare the outcomes.
+
+Null hypothesis: There is a 50/50 chance of each coin flip producing heads/tails.
+
+Alternative hypothesis: There is NOT a 50/50 chance of each coin flip producing heads/tails.
+
+Let's say that we conduct our experiment - we flip our coin 10 times, and we get heads 8 times. What does that mean?
+```{r}
+# There's a handy built-in test for examining binomial outcomes:
+heads <- 8
+tries <- 10
+null_p <- 0.5
+binom.test(heads, tries, null_p)
+```
+
+Interpreting P-Values
+======
+Our binomial test will give us a handy little write-up of our results, including the confidence interval of our sample, a sample probability of success (which we can compare to our confidence interval), and.... a p-value!
+
+The p-value is the probability of our sample results occurring IF our null hypothesis is true. If our coin really does have a 50/50 chance of heads/tails, then we only had a 10.9% chance of getting 8 heads out of 10 tries, like we did. In other words, if we repeat this test 100 times, we will expect to get 8 heads (or more) approximately 10 times. Unusual, but not *that* unusual.
+
+*Statistical significance* is tested (most commonly) by comparing our p-value to a predefined *alpha value*, specifying how confident we need to be that our results are unusual, if our null hypothesis is true. The most common alpha value is 0.05 (a 5% chance of our data occurring if our null hypothesis is true), but this is really an *arbitrary* number - it's not magic. Some researchers (controversially) use a p-value of 0.1, while other researchers who *really* want to be confident in their results (say, if you are researching a new drug) will use a smaller alpha value, such as 0.01.
+
+The relationship between P-values and confidence intervals
+======
+You'll note above that our sample has a 95% confidence interval that includes 0.5, our null hypothesis. Therefore it shouldn't be surprising that our probability of getting the results we did was greater than 5% (since the probability of our null hypothesis isn't in that outside area of our normal curve).
+
+But remember that our confidence interval gets smaller as our sample size gets larger! Let's try our experiment again, this time with more flips:
+```{r}
+heads <- 80
+tries <- 100
+null_p <- 0.5
+binom.test(heads, tries, null_p)
+
+```
+Note this time that our 95% sample confidence interval does NOT include 0.5. Let's check our p-value:
+```{r}
+format(1.116e-09, scientific=FALSE)
+```
+Our p-value is very small. The odds of getting 80 heads out of 100 flips IF our coin is really fair are very small, much smaller than our set alpha value (which we'll say is 0.05). 
+
+Therefore, our results are statistically significant! What this means is that we can *reject* the null hypothesis, as it is very unlikely (but not impossible) that our coin is really fair. By extension, we support our alternative hypothesis (but there is a reason why we made our alternative hypothesis so cautious - it is difficult to prove that something is true, and easier to show that something is unlikely)
+
+A note on frequentist inference and p-hacking
+=======
+You'll note that an alpha value of 0.05 allows us to say that results are statistically significant, on the assumption that if we perform our experiment 100 times, only 5 outcomes (on average) will fit the expectations of our null hypothesis. But this perspective comes with two downsides:
+
+* If we are only performing one experiment/study, as researchers often do, how do we know that we aren't part of that unlucky 5%? Theoretically, scientific research relies on repeat studies and verification of prior findings, but that rarely happens, because verification studies aren't exciting to publish.
+
+* On the other hand, if we have a big dataset (as is common in data science), and we run dozens of slightly different tests on it, odds are pretty good (5 in 100, remember), that we will get a result that is "significant". This is one form of p-hacking, and it is generally discouraged.
+
+* Another note regarding big datasets - remember, larger samples mean smaller confidence intervals mean smaller p-values. Sometimes this can be a bad thing - really big data can give you small p-values for patterns that may exist, but do not really mean that much in terms of actual, practical effects.
+
+Contextualizing P-Values
+======
+It's generally bad practice to only report on p-values in your findings. In fact, due to their overuse, statisticians now recommend focusing more on context than p-values themselves. It's important to include additional statistical context to help readers understand what your p-values really mean, like:
+* Confidence intervals
+* Measures of effect size (R squared, for example)
+* Other statistical measures of relationship (correlation, t-test, F-test, odds-ratios, etc,etc)
+
+Calculating P-Value
+======
+We're gonna run a manual calculation of a p-value to compare two related continuous datasets, just to see the process behind it.
+```{r}
+#Our null hypothesis is that our sample height is the same as our theoretical population height
+#Our alternative hypothesis is that there is a difference between our sample height and our theoretical population height.
+
+null_hypothesis <- mean(heights$height)
+(sample_mean <- mean(sample_heights))
+(skew_sample_mean <- mean(sample_skew_heights))
+#The difference between our means:
+diff <- sample_mean - null_hypothesis
+skew_diff <- skew_sample_mean - null_hypothesis
+
+sample_size <- length(sample_heights)
+
+standard_dev <- sd(sample_heights)
+skew_standard_dev <- sd(sample_skew_heights)
+
+sample_std_error <- standard_dev/sqrt(sample_size)
+skew_std_error <- skew_standard_dev/sqrt(sample_size)
+
+#The Z score of our sample results (how many standard errors (sample standard deviations) away from the population mean our sample mean is)
+(Z_score <- diff/sample_std_error)
+(skew_Z_score <- skew_diff/skew_std_error)
+
+ggplot(tibble(x = c(-4,4)), aes(x=x)) +
+  stat_function(fun = dnorm) +
+  geom_vline(aes(xintercept = Z_score), color="blue") +
+  geom_vline(aes(xintercept = skew_Z_score), color="green") +
+  geom_vline(aes(xintercept = c(-1.96, 1.96)), size=1.5, color="red")
+
+#So now we can use this Z-score to calculate the cumulative probability of getting our sample mean, or a smaller sample mean. In other words, we are calculating the area under the normal curve that is on the LEFT side of our Z-score line.
+pnorm(Z_score)
+pnorm(skew_Z_score)
+
+```
+But wait, that's not right, our alternative hypothesis wasn't asking the cumulative probability of our sample. We are testing the probability that our sample is different from our mean, meaning both MORE and LESS, or OUTSIDE of our Z-score. So we need to calculate the probability that our sample would be GREATER or LESS than our Z-score.
+``` {r}
+ggplot(tibble(x = c(-4,4)), aes(x=x)) +
+  stat_function(fun = dnorm) +
+  geom_vline(aes(xintercept = Z_score), color="blue") +
+  geom_vline(aes(xintercept = -1* Z_score), color="blue") +
+  geom_vline(aes(xintercept = c(-1.96, 1.96)), size=1.5, color="red") +
+  geom_vline(aes(xintercept = skew_Z_score), color="green") +
+  geom_vline(aes(xintercept = -1 * skew_Z_score), color="green")
+
+
+
+pnorm(-skew_Z_score) * 2
+#Fortunately, whether our Z-score is positive or negative, all we have to do to calculate a two-tailed p-value is to take the area to the left side of our negative Z-score, and multiply it by two. Easy enough.
+(p_value <- 2*pnorm(-abs(Z_score)))
+(skew_p_value <- 2*pnorm(-abs(skew_Z_score)))
+
+```
+Our p-value came out to ____, meaning that we had a ____% chance of getting a sample that deviated as much as our did from the population mean.
+
+P-value with a T Distribution
+=======
+Like confidence intervals, we can also calculate p-values with a Student's T Distribution, and/or a bootstrap technique. We'll start with the T Distribution.
+```{r}
+#Calculating a T-based P-value is very similar to a Z-based (normal) P-Value, but we need degrees of freedom.
+null_hypothesis <- mean(heights$height)
+sample_mean <- mean(sample_heights)
+(skew_sample_mean <- mean(sample_skew_heights))
+#The difference between our means:
+diff <- sample_mean - null_hypothesis
+skew_diff <- skew_sample_mean - null_hypothesis
+
+sample_size <- length(sample_heights)
+
+standard_dev <- sd(sample_heights)
+skew_standard_dev <- sd(sample_skew_heights)
+
+sample_std_error <- standard_dev/sqrt(sample_size)
+skew_std_error <- skew_standard_dev/sqrt(sample_size)
+
+degrees_freedom <- sample_size - 1
+
+#Note that the formula for calculating a t-score is exactly the same as calculating a Z-score. It's what we do with it that matters.
+t_score <- diff/sample_std_error
+skew_t_score <- skew_diff/skew_std_error
+
+ggplot(tibble(x = c(-4,4)), aes(x=x)) +
+  stat_function(fun = dt, args=list(degrees_freedom)) +
+  geom_vline(aes(xintercept = t_score), color="blue") +
+  geom_vline(aes(xintercept = -1* t_score), color="blue") +
+  geom_vline(aes(xintercept = c(-1.96, 1.96)), size=1.5, color="red") +
+  geom_vline(aes(xintercept = skew_t_score), color="green") +
+  geom_vline(aes(xintercept = -1 * skew_t_score), color="green")
+
+(p_value <- 2*pt(-abs(t_score), df=degrees_freedom))
+(skew_p_value <- 2*pt(-abs(skew_t_score), df=degrees_freedom))
+```
+Note again: Our sample sizes are large enough that our t-based p-values are similar to our z-based p-values.
+
+Bootstrapped P-Values
+=======
+This approach is more mathematically simple, but more computationally intensive (typical for bootstrapping)
+```{r}
+grab_sample_mean <- function(){
+  mean(sample(sample_heights, 100, replace=TRUE))
+}
+
+height_means <- replicate(10000, grab_sample_mean())
+height_means <- tibble(height_means)
+
+ggplot(height_means, aes(x = height_means)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = sample_mean), color="green") +
+  geom_vline(aes(xintercept = skew_sample_mean), color="blue")
+
+# When calculating p-values based on the bootstrap, we have to account for the relationship of our sample mean to the actual distribution of means.
+
+bootstrap_p_values <- function(mean) {
+  #Calcualte the percentage of means that are greater or less than our sample mean (both sides of the mean distribution)
+  tail_1_perc <- sum(height_means > mean)/length(height_means$height_means)
+  tail_2_perc <- sum(height_means < mean)/length(height_means$height_means)
+  #Pick the smaller (outside) tail, and double it to get the p-value.
+  p_value <- ifelse(tail_1_perc > 0.5, tail_2_perc * 2, tail_1_perc * 2)
+  return(p_value)
+}
+
+bootstrap_p_values(sample_mean)
+bootstrap_p_values(skew_sample_mean)
+
+height_means %>%
+  mutate(tail = ifelse(height_means > sample_mean, "Outside", "Inside")) %>%
+  ggplot(aes(x=height_means, fill=tail)) +
+    geom_histogram()
+
+```
+
+Most Hypothesis Tests Rely on P-Values
+========
+P-values don't only apply to means, they can apply to all kinds of test statistics. If we have some way of comparing two sets of data, then we can apply a p-value to it.
+
+(Pull up article)
+The p-value is a core element of many tests including:
+* z-test,t-test, F-test (ANOVA), chi-squared test (categorical)
+
+It is often difficult to hand calculate p-values, so it's usually easier to let R do that, with its many pre-built functions.
+
+An example: Chi-square Test
+======
+Chi-square tests rely on categorical frequency tables.
+```{r}
+#A recreation of the table in the book.
+freq_table <- tibble(awarded = c("no", "yes"), men = c(1345, 290), women = c(1011, 177))
+
+
+chisq_test <- freq_table %>% select(-awarded) %>% chisq.test()
+chisq_test$p.value
+
+#But remember, just having a p-value is not enough, we need some measure of the power of our relationship/hypothesis
+odds_male_success <- with(freq_table, (men[2]/sum(men))/(men[1]/sum(men)))
+
+odds_female_success <- with(freq_table, (women[2]/sum(women))/(women[1]/sum(women)))
+
+# The ratio of male success to female success
+odds_ratio <- odds_male_success/odds_female_success
+
+# Calculating a confidence interval
+log_or <- log(odds_ratio)
+se <- freq_table %>% select(-awarded) %>%
+  summarize(se = sqrt(sum(1/men) + sum(1/women))) %>%
+  pull(se)
+ci <- log_or + c(-1,1) * qnorm(0.975) * se
+exp(ci)
+```

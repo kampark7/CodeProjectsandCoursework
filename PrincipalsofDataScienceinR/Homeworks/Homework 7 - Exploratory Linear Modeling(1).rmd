@@ -1,0 +1,100 @@
+---
+title: "Homework 7 - Exploratory Linear Modeling"
+output: html_notebook
+author: "Kamryn Parker"
+---
+```{r}
+library(tidyverse)
+library(modelr)
+```
+
+*I'm defining a function below to measure model distance from the data by mean absolute error (MAE), rather than root mean squared error (RMSE). This is a different 'loss function' from the one we used in the class demonstration. Run this code, you'll use this function for question #4.*
+```{r}
+model1 <- function(intercept, slope, x_data) {
+  (slope * x_data) + intercept
+  #mx + b, in algebra terms
+}
+
+measure_MAE <- function(intercept, slope, x_data, actual_y_data) {
+  predictions <- model1(intercept, slope, x_data)
+  
+  diff <- actual_y_data - predictions
+
+    mean(abs(diff), na.rm=TRUE)
+}
+```
+
+**Below, you are going to conduct a grid search to determine which parameters are best (or approaching best) to describe the relationship between two variables. All of the code you need to do this can be found in the Lecture 1 - Week 6 lecture code/slides.**
+
+1. Make a scatter plot (geom_point()) of penguins (from the palmerpenguins library), with penguin body_mass_g as the x axis, and flipper_length_mm as the y axis.
+```{r}
+library(palmerpenguins)
+
+#Making of scatter plot
+ggplot(penguins, aes(body_mass_g, flipper_length_mm)) +
+  geom_point() + 
+  ylab("Flipper Length (mm)") +
+  xlab("Body Mass (g) ") +
+  ggtitle("Scatter Plot of Penguin Flipper Length by Body Mass")
+```
+
+2. Using the geom_abline() ggplot layer, play around with a few different slope and intercept value combinations to plot a few lines, and get a rough idea of which slope and intercept ranges work best with your data. You only have to show the code for one slope/intercept combination (one line).
+```{r}
+#Testing different slopes and intercepts to get an idea for the range of data
+ggplot(penguins, aes(body_mass_g, flipper_length_mm)) +
+  geom_abline(aes(intercept = 136.72, slope = 0.01528), alpha= 0.25) +
+  geom_point()
+#Tested lm formula on the data sent to get a general idea
+#lm(formula = flipper_length_mm ~ body_mass_g, data = penguins)
+```
+
+3. Using the expand.grid function, create a grid dataframe with intercept and slope data for 500 models. You'll want to make a sequence with 25 evenly-spaced intercept values, and a sequence with 25 evenly-spaced slope values, to give to the expand.grid function to combine. (The range of your intercept/slope sequences should be informed by your experimenting for question 2). 
+```{r}
+#making new data fram from expand grid
+df_grid <- expand.grid(
+  intercept = seq(115, 170, length = 25), #inbetween original guesses
+  slope = seq(0.01,0.025,length = 25))
+```
+
+4. Using the map2_dbl function, map the measure_MAE function over your intercept and slope values (remember that intercept is the first argument and slope is the second) to create a new column in your grid dataframe called MAD with the mean absolute distance for each row of model parameters. *Don't forget that you need to provide your x_data and actual_y_data values as additional arguments in your map_2 function.*
+```{r}
+#made new data frame where I mutated a new column into the data frame for the Mean Absolute Distance of the slope and intercept
+new_df <- df_grid %>%
+  mutate(MAD = map2_dbl(intercept, slope, measure_MAE,
+                         x_data = penguins$body_mass_g,
+                         actual_y_data = penguins$flipper_length_mm))
+```
+
+5. Filter the top 10 models from your grid dataframe (remember, you can use the rank function to do this) to create a new dataframe.
+```{r}
+#Making a new data frame of top 10 models by filtering by rank
+df_10 <- new_df %>% 
+  filter(rank(MAD) <= 10)
+df_10
+```
+
+6. Create a scatterplot from your grid dataframe, with your intercept parameters as your x axis, and your slope parameters as your y-axis. Then add a geom_point layer on top of that using your top-10 model data, with the same x and y axes, colored red. This will plot all of the possible model parameter combinations in your grid dataframe, and highlight the 10 best in red.
+```{r}
+#creating new plot of each intercept and slope in the model and then another point plot above it based on my top 10 modelsand highlighting where they are in the data frame
+ggplot(new_df, aes(intercept, slope)) +
+  geom_point(aes(color = -MAD)) +
+  geom_point(data = df_10, size = 3, color = "red", pch = 1) +
+  
+  ggtitle("Finding the Best Model for the Flipper Length/Body Mass relationship")
+```
+```{r}
+#Checking to see if the lines found above are the best fit on the original data spread
+ggplot(penguins, aes(body_mass_g, flipper_length_mm)) +
+  geom_point() + #scatter plot of original data
+  geom_abline(data = df_10, aes(intercept = intercept, slope = slope, color = -MAD)) #plots all the lines from the top 10 models
+```
+
+7. Based on your grid plot, what range of intercepts and slopes seem to best capture the relationship between our two variables?
+>
+It appears the best representation of this data set would be any with a slope of between 0.013750 and 0.017500 with an intercept between 144.7917 and 128.7500.
+>
+
+8. Because RMSE squares errors before they are averaged, RMSE penalizes large errors (outliers) more than smaller ones, while MAE treats them the same, proportionately. For example, an error of 10 will be squared to 100, which will contribute more to the RMSE than an error of 3, squared to 9. MSE just averages 10 and 3. Why would we want to penalize large errors more than smaller ones? Is that always better? Remember, our goal in fitting a linear model is to minimize either RMSE, or MAE. (Answer in 1-3 sentences)
+>
+Penalizing larger errors helps with improving our linear models by being able to filter out large outliers that may not actually help with the more 'average' data points. Also we don't neccesarily want our linear model to be a perfect fit becasue most of the time we have training data that we fit to first and then we try to use the same linear model on our actual test data. If we don't penalize the larger values more it could mess up our model when it goes to fit to the test data becasue its used to larger outliers. It is not neccesarilly always better becasue there could be a possibility of only large valued outliers so then it may skew our data so it is important to be careful and recognize when that is happeing within your data set.
+>

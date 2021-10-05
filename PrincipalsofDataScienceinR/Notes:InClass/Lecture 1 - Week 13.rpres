@@ -1,0 +1,288 @@
+Lecture 1 - Week 13
+========================================================
+author: 
+date: 
+autosize: true
+
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(palmerpenguins)
+```
+
+
+A Review of What We've Covered so Far
+========================================================
+* The difference between classification and regression?
+  - Regression
+      - Linear Models (Parametric)
+      - KNN Regression (Non-Parametric)
+      - Smoothing (A mix of parametric/non-parametric)
+  - Classification
+      - Linear Models; Logistic Regression (Binomial), Linear Discriminant Analysis (Multinomial)
+      - Bayesian Models (Multinomial)
+      - KNN Classification (Non-Parametric)
+  - Decision Trees (Both Classification & Regression)
+      - How do decision trees work?
+      - Bagging
+        - Random Forests
+      - Boosting (We'll cover this below)
+  - Evaluation
+      - How do we measure accuracy/fit for regression models?
+          - RMSE
+          - MSE
+          - MAE
+          - R-Squared
+      - How do we measure accuracy/fit for classification models?
+          - F1 Score (Harmonic Mean of Precision and Recall)
+          - ROC - AUC
+          - Confusion Matrix
+  - Cross-Validation and Hyperparameter Tuning
+      - Cross-validation and tuning need to be done separately
+      - Why is this important?
+        - Hold-Out Method
+            - Bootstrapping
+            - Cross-Folds
+      
+Boosting
+==========
+I forgot to cover this when covering decision trees - boosting is another ensemble method that works really well with decision trees.
+
+Compared to bagging (bootstrap aggregating), and its sibling, random forests, boosting is a little more finicky/complex, but can also be very powerful.
+
+The steps of boosting:
+1. Fit a model
+2. Examine the residuals of the first model
+3. Train another model to minimize the residuals/errors of the first model (increase the weights for the misclassified/residual observations)
+4. Repeat many times, until a cost function is minimized.
+
+In a nutshell, we force each incremental model to train more heavily on the data that the previous one didn't handle well, while still accounting for a lower error across models. 
+
+Variants: Adaboost, gradient boosting, and stochastic gradient boosting (most common).
+
+Stochastic gradient boosting introduces elements of randomness (like the random forest - stochastic just means random), by including random sampling of observations and variables in the training process, just like random forests.
+
+An Example
+========
+(Based on a blog post on R-Bloggers, written by user "Posts on Tychobra")
+```{r}
+library(xgboost)
+
+#Splitting up our data into a training and hold-out test set
+penguins <- penguins %>% filter(complete.cases(.))
+peng_split <- initial_split(penguins)
+peng_train <- training(peng_split)
+peng_test <- testing(peng_split)
+
+#Boosting engines have a lot of hyperparameters that need to be tuned carefully.
+?boost_tree
+
+# Building a model engine
+xgboost_model <- boost_tree(mode = "regression",
+           trees = 500,
+           min_n = tune(),
+           tree_depth = tune(),
+           learn_rate = tune(),
+           loss_reduction = tune()) %>%
+  set_engine("xgboost", objective = "reg:squarederror")
+
+# Creating a range of parameters with our built in functions
+(xgboost_hyperparams <- parameters(
+  min_n(),
+  tree_depth(),
+  learn_rate(),
+  loss_reduction()
+))
+
+# Build our grid
+?grid_max_entropy
+
+xgboost_grid <- grid_max_entropy(
+  xgboost_hyperparams,
+  size = 40
+)
+
+View(xgboost_grid)
+
+# Creating a workflow for our model
+xgboost_wf <- workflow() %>%
+  add_model(xgboost_model) %>%
+  add_formula(body_mass_g ~ .)
+
+# Creating our cross-folds
+peng_folds <- vfold_cv(peng_train, v = 5)
+
+# Tuning our model on our grid - this will be a while.
+xgboost_tuned <- tune_grid(object = xgboost_wf,
+                           resamples = peng_folds,
+                           grid = xgboost_grid,
+                           metrics =     metric_set(rmse, rsq, mae),
+                           control = control_grid(verbose = TRUE))
+
+# Showing the best sets of hyperparameters
+xgboost_tuned %>%
+  show_best(metric = "rmse")
+
+#Showing/saving THE best set of hyperparameters
+(xg_boost_best_params <- xgboost_tuned %>%
+  select_best(metric = "rmse"))
+
+#Using our best hyperparameters to finalize our model
+xgboost_model_final <- xgboost_model %>%
+  finalize_model(xg_boost_best_params)
+
+# Updating our workflow, fitting it again to our training data
+fit_wf <- xgboost_wf %>%
+  update_model(xgboost_model_final) %>%
+  fit(peng_train)
+
+#Gathering predicts and metrics
+fit_wf %>%
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  metrics(body_mass_g, .pred)
+
+#Checking residuals
+fit_wf %>% 
+  predict(peng_test) %>%
+  bind_cols(peng_test) %>%
+  mutate(residuals = (body_mass_g - .pred)/ .pred) %>%
+  ggplot(aes(x = .pred, y = residuals)) +
+    geom_point() +
+    geom_hline(yintercept = 0)
+  
+```
+Our residuals are pretty randomly distributed around our predictions, so we don't have any issues there.
+
+Note - boosting is significant overkill for the penguin dataset, but the code is similar, generally, for most data.
+
+Now, some basic text analysis
+=======================================================
+This code is based on "Text mining in R with tidytext" - a web article by Peter Aldhous:
+https://paldhous.github.io/NICAR/2019/r-text-analysis.html
+
+You can find a good overview of Tweet analysis in that article too, but we're going to focus on more long-form text.
+
+Another good resource is "Text Mining with R - A Tidy Approach" by Julia Silge & David Robinson (mostly available online).
+
+Loading in our Data
+========
+I downloaded a .csv with data from every president's state of the union address since 1790. We're going to load it in. This will be our "corpus", or library of documents (not always formatted as a .csv)
+
+The quanteda library (https://quanteda.io/articles/pkgdown/quickstart.html) provides some handy out-of-the-box functions for qualitative analysis.
+```{r}
+library(quanteda)
+
+sou <- read_csv("r-text-analysis/sou.csv")
+head(sou)
+```
+
+Some Basic Analysis
+========================================================
+
+```{r}
+#We're going to pull out George Washington's first address to Congress - the very first state of the union
+(GW_SOU <- sou$text[1])
+
+#Looking for some keywords-in-context
+kwic(GW_SOU , "free")
+
+#Using some very basic regex
+kwic(GW_SOU, "nation*")
+
+# "Tokenizing" our text
+(sentences <- tokens(GW_SOU, remove_numbers = TRUE, remove_punct = TRUE, what = "sentence"))
+(words <- tokens(GW_SOU, remove_numbers = TRUE, remove_punct = TRUE, what = "word"))
+(characters <- tokens(GW_SOU, remove_numbers = TRUE, remove_punct = TRUE, what = "character"))
+
+
+#Building a "document feature matrix"
+View(GW_dfm <- dfm(words))
+#Building a "document feature matrix" with stemmed words and removed stopwords
+View(GW_dfm <- dfm(words, stem = TRUE, remove = stopwords("english")))
+
+# Getting our most common words
+topfeatures(GW_dfm)
+
+#Building a word cloud
+textplot_wordcloud(GW_dfm, min_count = 2, random_order = FALSE, color = RColorBrewer::brewer.pal(8, "Dark2"))
+```
+
+Applying what we've learned to the whole corpus
+==========
+```{r}
+sou_corpus <- corpus(sou)
+
+docvars(sou_corpus)$president
+docnames(sou_corpus) <- docvars(sou_corpus)$president
+
+View(kwic(sou_corpus, "free"))
+View(kwic(sou_corpus, "free*"))
+
+#We can automatically create tokens through the dfm function
+(SOU_DFM <- dfm(sou_corpus, stem = TRUE, remove = stopwords("english"), remove_punct = TRUE))
+
+topfeatures(SOU_DFM)
+
+#Building a word cloud
+textplot_wordcloud(SOU_DFM, min_count = 1000, random_order = FALSE, color = RColorBrewer::brewer.pal(8, "Dark2"))
+
+# Grouping by another variable
+(by_party_dfm <- dfm(sou_corpus, groups = "party", remove = stopwords("english"), remove_punct = TRUE))
+
+dfm_sort(by_party_dfm)
+
+#Filtering out the past parties
+by_party_dfm <- dfm_subset(by_party_dfm, party %in% c("Republican", "Democratic"))
+
+#Comparing two word clouds of the two parties
+textplot_wordcloud(by_party_dfm, min_count = 750, random_order = FALSE, color = RColorBrewer::brewer.pal(8, "Dark2"), comparison = TRUE)
+```
+
+Some other textplots
+===========
+```{r}
+trimmed_dfm <- dfm_trim(SOU_DFM, min_termfreq = 2000)
+textplot_network(trimmed_dfm)
+
+docnames(SOU_DFM) <- docvars(SOU_DFM)$president
+
+#Compare all other addresses to Trump's 3rd address to find "key" variations
+tstat_key <- textstat_keyness(SOU_DFM, target = "Donald J. Trump.2")
+
+#Unsurprisingly, unique individual names turn out to be pretty unique identifiers for individual speeches
+textplot_keyness(tstat_key)
+
+post_1960 <- corpus_subset(sou_corpus, date >= 1960)
+
+docnames(post_1960) <- docvars(post_1960)$president
+
+freedom_kwic <- kwic(post_1960, "free*")
+terrorism_kwic <- kwic(post_1960, "terror*")
+
+textplot_xray(freedom_kwic, terrorism_kwic)
+```
+
+Finally, some analysis examples
+========
+```{r}
+sim <- textstat_simil(SOU_DFM, SOU_DFM[, c("war", "opportun", "now")], method = "cosine", margin = "features")
+
+head(as.list(sim)$war)
+head(as.list(sim)$opportun)
+head(as.list(sim)$now)
+```
+
+```{r}
+library(stm)
+topic_model <- stm(trimmed_dfm, K = 20, verbose = FALSE)
+plot(topic_model)
+```
+
+
+
+
+
+
+
+

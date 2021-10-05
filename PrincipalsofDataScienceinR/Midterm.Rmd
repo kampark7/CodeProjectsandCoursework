@@ -1,0 +1,150 @@
+---
+title: "DATA-LA 322 Mideterm"
+output: html_notebook
+author: "Kamryn Parker"
+---
+1. Load the NHANES dataset (it’s in the NHANES library, which you may have to install).  Provide an overview of this dataset. How many variables (columns) are there and how many observations (rows) do we have?
+```{r}
+library(NHANES)
+library(tidyverse)
+
+print(paste("Number of Columns:", ncol(NHANES))) #Printing the count of columns
+print(paste("Number of Rows:", nrow(NHANES)))  #printing count of rows
+df <- NHANES #Changing to an easier name to type
+df
+```
+
+2.	What is the data type for the Education variable?  What are the possible values of Education?
+```{r}
+str(df) #prints out the data types of each variabl in the data set
+summary(df$Education) #summary of the entire column of education
+```
+>
+The data type is a factor and the different values are: 8th Grade, 9 - 11th Grade, High School, Some College, College Grad, NA's
+>
+
+3.	What is the largest head circumference (HeadCirc) in this dataset? What is the ID number (ID) and age of the child (in months – AgeMonths) with the largest head circumference (HeadCirc)?  
+```{r}
+max(df$HeadCirc, na.rm = TRUE) #found the highest value in the column of head circumference
+
+df %>% 
+  filter(HeadCirc == 45.4) %>% #filter the value that has the highest head circumference
+  select(ID, AgeMonths, HeadCirc) #selects the requested values in the question
+
+```
+
+4.	If you look at the relationship between Age and AgeDecade table(NHANES$Age, NHANES$AgeDecade) you will see that those people who are listed as age 80 (which actually represents 80 or older), do not have an AgeDecade value.  Create a new variable: AgeDecade2 which categorizes age into 10-year increments and ends with 80+.
+```{r}
+# df %>%
+AgeDecade2 <- cut(df$Age, #cut used to make a cut in the values of age based on certain break points
+                right=FALSE, 
+                breaks = c(0,(1:8)*10,1000), #starts at 0 and progresses to make 10 year increments until it reaches 80
+                labels = c("0-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70-79", "80+")) #makes labels for each cut
+
+new_df <- df %>% 
+  cbind(AgeDecade2) #makes a new data frame with the column AgeDecade2 binded to it
+```
+
+5.	How many people in this survey have had more than 4 children (nBabies) and sleep more than 8 hours per night (SleepHrsNight).  Note: You will have to exclude those who have missing values for either nBabies or SleepHrsNight.  You will also have to account for duplicate IDs (the same people surveyed more than one year).
+```{r}
+filtering_data <- distinct(new_df) %>% #filters so that there is only distinct values from the data
+  filter(nBabies > 4, na.rm = TRUE) %>% #then filters for if a person has had more than 4 babies
+  filter(SleepHrsNight >8, na.rm = TRUE) #then filters to for if a person has more than 8 hours of sleep at night
+filtering_data
+
+print(paste("Number of people:", count(filtering_data))) #printing a count of the data collected under this criteria
+```
+
+6.	Of those people who have had more than 4 children (nBabies) and sleep more than 8 hours (SleepHrsNight), what are the ages ranges of those people? (Use the AgeDecade2 variable you just created in #5). Present this information as a table.  Interpret your findings.  
+```{r}
+table(filtering_data$AgeDecade2) #Making a table of the distribution of people form the previous data set
+```
+>
+It shows that most of the people who report having 4 children and getting more than 8 hours of sleep are senior aged people. This could be most likely due to tha fact that when these adults are 60-80 years old most of their children should be grown up and out of the house and these adults may be retired so they are able to get more sleep at night. Not having to care for children or have a job they need to be at in the morning would make it easier for them to get more sleep at night. There are a few younger adults that claimed this statistic and it could be a similar idea that their children may be older so they can at least be self sustaining so their parents don't need to be wathing them 24/7 like they would for a young infant.
+>
+
+7.	Create a new dataframe that only includes adults ages 18 to 45, only including the following variables: ID, Age, AgeDecade2, Gender, Education, MaritalStatus, SexNumPartnLife, SexOrientation.  How many adults are in this dataset? (Note: the select() function occurs in many packages, so  you will need to utilize the dplyr package if it’s not your default). 
+```{r}
+df2 <- new_df %>% 
+  filter(Age >= 18 & Age <= 45) %>% #making a new data frame with age between 18 and 45
+  select(ID, Age, AgeDecade2, Gender, Education, MaritalStatus, SexNumPartnLife, SexOrientation) #selecting the columns needed
+
+df2 #verifying that the filter and select functions worked like they were supposed to
+```
+
+8.	Create a new variable (in your new dataframe), AvgNumSexPar, defined as the number of sexual partners per year beginning at age 18. As an example, a person who is 25 and has had 10 sexual partners, would have an average number of sexual partners of 10 / (25-17) = 10/8 = 1.25 sexual partners / year (since 18). (Note: We will divide by Current Age – 17 so that those individuals who are currently 18 don’t have a 0 in the denominator).
+```{r}
+new_function <- function(age, sex_partners){ #takes in values age and sexual partners
+  sex_partners / (age - 17) #takes sexual partners and divides it by the age - 17
+}
+new_function(25,10) #check to see if the function works from the questions example parameters and it does
+
+new_df2 <- df2 %>%
+  mutate(AvgNumSexPar = map2_dbl(Age, SexNumPartnLife, new_function)) #%>% #Creates a new column in entire dataframe and maps the function to the new column
+  #select(AvgNumSexPar) #selects that new column
+
+new_df2
+```
+
+9.	Using your new dataframe, create a histogram of AvgNumSexPar.  Describe the distribution.  Is there an outlier?  Provide details on this outlier? (What is their age, gender, total number of sexual partners)?  
+```{r}
+
+distinct(new_df2) %>%
+  ggplot(aes(AvgNumSexPar, na.rm = TRUE)) + #Using the average sexual partners as the variable
+              geom_histogram(binwidth = 0.5) + #making smaller bins so it is easier to read and see distribution
+              ylab("Count") +
+              xlab("AvgNumSexPar") +
+              ggtitle("Average Sex Partners of Survey Respondants")
+
+distinct(new_df2) %>%
+  filter(AvgNumSexPar > 60)
+```
+>
+The distirbution is skewed to the right indicated that an average person has less that 20 sexual partners in their lifetime.
+The distinct outlier is a 41 year old man with a total of 2000
+>
+
+10.	Using your new dataframe, create a density plot of AvgNumSexPar with fill by Gender. Convert the x axis to a log2 scale.  Interpret your findings. 
+```{r}
+new_df2 %>%
+  ggplot(aes(x=AvgNumSexPar, fill=Gender)) + #fill the plot by gender
+    geom_density(adjust=1, alpha = 0.4) +
+    scale_x_continuous(trans='log2') +
+    ylab("Desnity of Average Sexual Partners") +
+    xlab("Average Number of Sexual Partners") +
+    ggtitle("Desnity of Survey Respondants Average Sexual Partners by Gender")
+
+```
+>
+Men tend to have a higer density of sexual parteners than women however there are a few women who have a higher density of sexual partners around the 64.000 x value on the density plot.
+>
+
+11.	Using your new dataframe, create a scatter plot of Age by AvgNumSexPar, with the y axis on a log2 scale.  Indicate gender by color.
+```{r}
+new_df2 %>%
+  ggplot(aes(x=Age, y=AvgNumSexPar, color = Gender, na.rm=TRUE)) +  #creates plot of Age (x) by AvgNumSexPar(y) and color of point gender
+  geom_point() +
+  scale_y_continuous(trans='log2') +
+    xlab("Age of Survey Respondants") +
+    ylab("Average Number of Sexual Partners") +
+    ggtitle("Spread of Survey Respondants Average Sexual Partners by Gender")
+```
+
+12.	Using your new dataframe, create a linear model ‘predicting’ AvgNumSexPar (y) by Age (x). Use your linear model’s  predictions to plot a green line over the scatter plot you made in question 11. (Note that the log2 transformation will make your straight line look curved). Does the linear model make sense on this dataset? Why, or why not?
+```{r}
+linear_model <- lm(formula = AvgNumSexPar ~ Age, data = new_df2) #using built in r function for linear model 
+
+new_df2 <- new_df2 %>% mutate(preds = predict(linear_model, new_df2))
+
+new_df2 %>%
+  ggplot(aes(x=Age, y=AvgNumSexPar, color = Gender, na.rm=TRUE)) +
+    scale_y_continuous(trans='log2') +
+    geom_point() +
+    geom_line(aes(x = Age, y = preds), color = "green", size = 2) +
+    xlab("Age of Survey Respondants") +
+    ylab("Average Number of Sexual Partners") +
+    ggtitle("Spread of Survey Respondants Average Sexual Partners by Age")
+```
+>
+I do think this is a good line to use as the predictor for average sexual partners by age. It really only hits the top values of the data and almost ignores the lower data points when it is in the log scale. When not put in log scale it looks like a good line predictor since it fits the data better. It didn't seem to curve like stated it would in the question but I figure it is supposed to so when I checked it as a noraml plot with a normal scale it seemed to be a good line fit.
+>

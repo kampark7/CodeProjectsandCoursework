@@ -1,0 +1,99 @@
+---
+title: "Homework 9: Bayesian Probability & Statistical Inference"
+output: html_notebook
+author: "Kamryn Parker"
+---
+
+1. Building a basic Bayesian classifier
+```{r}
+library(palmerpenguins)
+library(tidyverse)
+```
+
+1a. Get the mean and standard deviation of flipper length (in mm) for each species. Don't forget that the penguins dataset has NAs that you'll need to deal with.
+```{r}
+penguins %>%
+  group_by(species) %>%
+  summarize(mean = mean(flipper_length_mm, na.rm=TRUE), sd = sd(flipper_length_mm, na.rm=TRUE))
+```
+1b. Using the normal curve parameters you just found, plus the dnorm() function, calculate the probability of a penguin having a flipper length of 196mm, conditional on each species. (Using a map function on your summary tibble could make this easier for you, but you don't have to do so)
+```{r}
+#Pr(flipper = 196 | species)
+penguins %>%
+  group_by(species) %>%
+  summarize(mean = mean(flipper_length_mm, na.rm=TRUE), sd = sd(flipper_length_mm, na.rm=TRUE)) %>%
+  mutate(prop = dnorm(196, mean, sd))
+```
+
+1c. Calculate the marginal probability of P(flipper_length_mm = 196) across all species. *You can incorrectly assume that all flipper lengths are normally distributed across species. In other words, you can use the mean and sd of the whole dataset, along with dnorm() to estimate this.*
+```{r}
+penguins %>%
+  group_by(flipper_length_mm) %>%
+  summarize(count = n()) %>%
+  mutate(prop = count/sum(count)) %>%
+  filter(flipper_length_mm == 196)
+```
+
+*Bayes' Theorem*
+P(A|B) = (P(B|A)*P(A)) / P(B)
+
+1d. Using Bayes' Theorem, calculate the probability of a penguin belonging to each species, given a flipper length of 196mm.
+```{r}
+#P(species | filpper == 196) = P(flipper == 196 | species) * P(flipper == 196) / P(species)
+penguins %>%
+  group_by(species) %>%
+  summarize(count = n()) %>%
+  mutate(prop = count/sum(count))
+
+prob_adelie_filpper <- (0.0397863330 * 0.02906977) / 0.4418605
+prob_chinstrap_flipper <- (0.0559206512	* 0.02906977) / 0.1976744
+prob_gentoo_flipper <- (0.0002959378	* 0.02906977) / 0.3604651
+
+prob_adelie_filpper
+prob_chinstrap_flipper
+prob_gentoo_flipper
+
+```
+1e. If a penguin has a flipper length of 196mm, which species is it most likely to be? What is the percentage likelihood that it belongs to that species?
+>
+If a penguin has a flipper length of 196 it will most likely be the chinstrap species with a 0.82236% chance of having a flipper length of 196 mm.
+>
+
+2. You are an alien responsible for cataloging and describing humans. Based on extensive prior sampling, you are quite confident that the human population has a mean arm span of 66 inches, with a standard deviation of 4 inches. However, one day you abduct 50 people from a basketball championship. The average arm span of this sample is 69 inches, with a standard deviation of 6 inches. 
+
+2a. What is the standard error of this sample?
+```{r}
+#standard error is the standard deviation / the square root of the mean
+st_er <- 6/sqrt(50)
+st_er
+```
+
+2b. What is the confidence interval of this sample? (Normal-curve based)
+```{r}
+#the 1.96 is the Z score for 95% which is a pretty common value to choose when computing
+lower_interval <- 69 - 1.96*st_er
+upper_interval <- 69 + 1.96*st_er
+
+lower_interval
+upper_interval
+#This is saying we are 95% confident that the true mean of arm spans are between these values
+```
+
+2c. What is the p-value of your sample having the same mean as your population? (Example in Lecture 2 - Week 8 code/slides)
+```{r}
+#The difference between our means: sample - null hypothesis
+diff <- 69 - 66
+
+#The Z score of our sample results (how many standard errors (sample standard deviations) away from the population mean our sample mean is)
+(Z_score <- diff/st_er)
+
+# Then use pnorm() to calculate your p-value.
+(p_value <- 2*pnorm(-abs(Z_score)))
+
+```
+
+2d. Interpret your results - what does your p-value mean? What does your confidence interval mean? How does your confidence interval relate to your p-value?
+>
+Our confidence interval is telling us that we are 95% confident that the true mean of arm spans are between the values of 
+67.33688 and 70.66312. Our P-value tells us that we have 0.0406952% chance of getting a sample in our data set that deviates from the population mean. So since our p-value if so small we can reject the null hypothesis. The confidence interval and p-value relate to one another because they are able to give us a range of possible effected data.
+>

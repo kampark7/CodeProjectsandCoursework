@@ -1,0 +1,169 @@
+Lecture 1 - Week 7
+========================================================
+author: 
+date: 
+autosize: true
+
+```{r}
+library(tidyverse)
+library(modelr)
+library(MASS)
+library(gapminder)
+```
+
+Common Statistical Tests as Linear Models
+======
+Go over the article.
+
+Today's Other Main Topic
+======
+Using nesting and mapping to leverage many models for understanding large, complex datasets
+
+An intro to the gapminder data
+=======
+```{r}
+View(gapminder)
+
+#Group allows us to aggregate our plot by a particular variable.
+gapminder %>% 
+  ggplot(aes(year, lifeExp, group = country)) +
+    geom_line(alpha = 0.33)
+```
+You can see an individual line representing each country's life expectancy from 1952 to 2007. Immediately, it appears that there is a general trend, but some countries are not like the others.
+
+Nesting
+======
+Let's apply a linear model to every single country. First, we have to nest by country (and continent) so that it's easy to map our model over.
+```{r}
+by_country <- gapminder %>%
+  # Adding continent to this doesn't actually do anything, because country is a more detailed variable than continent, but this is a convenient way to keep the continent variable in our grouped dataframe.
+  group_by(country, continent) %>%
+  nest()
+
+View(by_country)
+```
+
+Fitting models to a nested dataframe
+=======
+We can use mutate to add a new column with model coefficients
+```{r}
+by_country <- by_country %>%
+  mutate(model = map(data, ~ lm(lifeExp ~ year, data = .)))
+
+View(by_country)
+```
+
+Unnesting a dataframe
+======
+We can use un-nest to roll out model elements that we want to access more easily.
+```{r}
+#Adding residuals to each country's nested data
+by_country <- by_country %>%
+  mutate(residuals = map2(data, model, add_residuals))
+
+# Unnest our new residuals column
+residuals <- unnest(by_country, residuals)
+
+View(residuals)
+
+dim(by_country)
+dim(residuals)
+```
+
+Plotting residuals for each country
+========
+```{r}
+residuals %>%
+  ggplot(aes(year, resid)) +
+    geom_line(aes(group=country), alpha=0.33) +
+#We can also plot a smoothed line to track the track across all countries
+    geom_smooth(se = FALSE)
+```
+
+Faceting by continent
+=======
+```{r}
+residuals %>%
+  ggplot(aes(year, resid)) +
+    geom_line(aes(group = country), alpha = 0.33) +
+    facet_wrap(~continent) +
+    geom_smooth(se = FALSE)
+```
+What do these residuals tell us about how individual countries and continents fit the expected linear relationship between year and life expectancy?
+
+Using glance, from the broom library, to display model info in a clean, convenient way:
+======
+```{r}
+library(broom)
+by_country <- by_country %>%
+  mutate(glance = map(model, glance)) %>%
+  unnest(glance, .drop = TRUE)
+
+View(by_country)
+```
+
+Interpreting the Glance Data
+======
+* r.squared - The percentage of variance in the dependent variable (y) that is explained by our model's independent variables (x). An R squared value of 0.5 means that roughly half of the variation in our y variable can be explained by our model. Commonly used to compare regression models.
+* Adjusted r.squared - Adjusts R squared for the number of terms in a model (attempts to penalize adding too many non-relevant variables), an attempt to combat overfitting.
+*sigma - the standard deviation of the residuals
+* AIC - Akaike's 'An Information Criterion' - Evaluates the model's fit on the training data, while penalizing the complexity of the model.Estimates out-of-sample prediction error. Used to compare models (a lower AIC is better, given the same set of data).
+*BIC - Bayesian Information Criterion - Closely related to AIC, penalizes the number of parameters, and used to compare models. A lower AIC and BIC is generally better, given the same dataset (relative measure).
+
+Less-Linear Linear Models
+============
+```{r}
+library(splines)
+data(Boston)
+
+ggplot(Boston, aes(lstat, medv)) +
+  geom_point() +
+  #The stat_smooth ggplot layer can be an easy way to initially tell if your data is linear or not, although it can't be used to easily describe data-wide patterns/parameters.
+  stat_smooth()
+
+flex <- 17
+
+spline_model <- lm(medv ~ ns(lstat, flex), data = Boston)
+
+poly_model <- lm(medv ~ poly(lstat, flex), data = Boston)
+
+
+
+curve_grid <- Boston %>% 
+  data_grid(lstat) %>%
+  spread_predictions(spline_model, poly_model)
+
+ggplot(Boston, aes(lstat, medv)) +
+  geom_point() +
+  geom_line(data = curve_grid, aes(lstat, spline_model), size=2, color = "red", alpha= 0.5) +
+  geom_line(data = curve_grid, aes(lstat, poly_model), size = 2, color = "green", alpha= 0.5)
+  
+```
+The greater the number of splines, the closer the fit. But that comes at a price - explainability and predictability.
+
+A note on our line shooting off into infinity.
+
+Linear Classification (Generalized Linear Models)
+======
+Linear models are most commonly used for regression (prediction of a continuous variable), but can also be used for classification of a categorical variable. Generalized linear models define a distance metric based on statistical likelihood. They attempt to place a line in a probability space to separate two different outcomes.
+```{r}
+library(palmerpenguins)
+
+penguins <- penguins %>%
+  mutate(sex_binary = ifelse(sex == 'female', 1, 0))
+
+peng_sex <- glm(sex_binary ~ body_mass_g, data = penguins, family = 'binomial')
+# Compare AIC with and without species
+
+penguin_grid <- penguins %>%
+  data_grid(body_mass_g, species) %>%
+  mutate(pred = predict(peng_sex, newdata = ., type = 'response'))
+
+
+ggplot(penguins, aes(body_mass_g, sex_binary, color = species)) +
+  geom_point() +
+  geom_line(data = penguin_grid, aes(y= pred)) +
+  facet_wrap(~species)
+
+```
+

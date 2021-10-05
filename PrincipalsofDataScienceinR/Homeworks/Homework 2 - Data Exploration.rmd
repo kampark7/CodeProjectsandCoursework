@@ -1,0 +1,89 @@
+---
+title: "Homework Assignment #2"
+author: "Kamryn Parker"
+output: html_notebook
+---
+
+First, you'll need to install, and load the palmerpenguins library. Do that here:
+```{r}
+install.packages("palmerpenguins")
+library(palmerpenguins)
+```
+
+Then you'll need to access the data from the palmerpenguins dataset. I'll give you that function:
+```{r}
+data(penguins)
+```
+
+Notice in your environment that we just loaded in two datasets - penguins, and penguins_raw. For now we're going to do some basic navigation and exploring of the penguins data.
+
+*To start, you might want to use the colnames(), head(), and str() functions, to see what you're working with. You don't have to list those in your notebook.*
+
+1. Pick a numeric/integer column and get a summary of it:
+```{r}
+#Testing the different functions to get a sense of what is in the data frame
+colnames(penguins)
+head(penguins)
+str(penguins)
+
+#Gettting a summary of the bill length in millimeters
+summary(penguins$bill_length_mm)
+```
+
+2. Now get the standard deviation of that column (Note, you might need to address NAs, if you're getting an NA result):
+```{r}
+sd(penguins$bill_length_mm, na.rm = TRUE)
+#Using na.rm = TRUE it disregards all blank entires in the data since they are technically not a number so they cannot be included in the standard deviation calculation.
+```
+
+3. Now make a table that counts penguins by two character/factor variables
+```{r}
+penguins[penguins$species == "Chinstrap" & penguins$sex == "female",]
+# First I organized a dataframe to make sure it would work to count the penguins 
+nrow(penguins[penguins$species == "Chinstrap" & penguins$sex == "female",])
+#Then I used Nrow to count how many rows or 'penguins were in the new filtered data sets which is 34
+```
+
+4. Create a new dataframe with data for MALE penguins NOT from Torgersen island, with flipper lengths longer than or equal to 190mm. Then, rank the penguins by body mass, and sort by rank.
+
+Show the top five rows of your filtered and sorted dataframe.
+```{r}
+new_df <- penguins[penguins$island != "Torgersen" & penguins$sex == "male" & penguins$flipper_length_mm >= 190,]
+new_df$body <- rank(new_df$body_mass_g)
+head(new_df)
+#created a new data frame named new_df that excludes the penguins based on the given criteria. Then I called that data frame to rank it by the body mass of penguins. Using the head function makes it easy to show the top 5 rows of the data frame.
+```
+
+
+5. Penguin mass is currently listed in grams - make a new column, "body_mass_kg" with penguin masses converted to kilograms.
+```{r}
+penguins$body_mass_kg <- penguins$body_mass_g / 1000
+penguins
+#created a new column for the conversion and set it to the original column divided by 1000 which is the proper conversion.
+```
+
+
+6. Make a plot (using the plot() function) of penguin species by penguin body mass in kilograms (the plot function should automatically spit out a boxplot):
+```{r}
+plot(penguins$species, penguins$body_mass_kg)
+#The barplot is plotting the species as x and their body mass as y
+```
+
+7a. How might we determine which species of penguin is the most sexually dimorphic? (Has the largest difference in mean weights between males and females in the same species?) Hint: The aggregate() function might come in handy, but you can use whichever approach works best for you. Show any code you use to answer the question here:
+```{r}
+aggregate(penguins, by=list(penguins$species,penguins$sex), FUN=mean,na.rm = TRUE)
+chinstrap <- abs(3527.206-3938.971)
+gentoo <- abs(4679.741-5484.836)
+adelie <- abs(3368.836-4043.493)
+
+chinstrap
+gentoo
+adelie
+```
+
+7b. Which species of penguin is the most sexually dimorphic? (Type your answer below):
+>
+Gentoo is the most sexually dimorphic among the different penguin groups
+I took each calculation of body mass and subrtraced it from one another for each sex type in the species. Gentoo had a body mass difference of 805.095
+
+>

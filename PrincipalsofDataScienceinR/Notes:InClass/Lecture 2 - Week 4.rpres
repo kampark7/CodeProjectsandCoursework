@@ -1,0 +1,181 @@
+Lecture 2 - Week 4
+========================================================
+author: 
+date: 
+autosize: true
+
+```{r}
+library(nycflights13)
+library(tidyverse)
+```
+
+Homework 4
+======
+Great work, everyone seems to be getting the hang of the coding.
+
+Mistake correction: Resistance to outlier
+
+Simpson's Paradox
+
+
+What is a relational database?
+=====
+A database composed of multiple dataframes, connected (related to each other) by key variables. Primary key = the key for the dataframe we're looking at now. Foreign key = the key connecting another dataframe to our current dataframe.
+```{r}
+#Taking a look at the data
+#Information about individual airlines
+head(airlines)
+#Information about individual airports
+head(airports)
+#Information about individual planes
+head(planes)
+#Information about weather
+head(weather)
+```
+So what are the relationships between these dataframes? (Pull up image from W & G book)
+
+Mutating Joins
+========================================================
+Keys are 'key' to connecting different dataframes, so we can use data from one dataframe with data from another. A key has to uniquely identify each row, otherwise it isn't useful for merging (imagine you have a key that says that an airport shares an FAA code with another airport - then FAA codes aren't very useful for identifying flights).
+
+Mutating Joins - They change the dataframe we're working with (usually by adding columns)
+
+```{r}
+x <- tribble(
+  ~key, ~val_x,
+     1, "x1",
+     2, "x2",
+     3, "x3"
+)
+y <- tribble(
+  ~key, ~val_y,
+     1, "y1",
+     2, "y2",
+     4, "y3"
+)
+
+# Only keep observations (rows) that are present in BOTH tables
+inner_join(x, y, by="key")
+
+# Only keep observations from the LEFT (first) table
+left_join(x, y, by="key")
+
+# Only keep observations from the RIGHT (second) table
+right_join(x, y, by="key")
+
+#Keep all observations from BOTH tables
+full_join(x, y, by=c("key"))
+
+```
+A note on the "by" argument - you can use multiple arguments. by=c("column_1", "column_2"), in case you only want to merge rows where both variables match.
+
+An Example
+====== 
+```{r}
+# Left joins keep the observations from our original dataframe, and add data from another dataframe where the values match.
+dim(weather)
+dim(airports)
+
+weather %>%
+  left_join(airports, by=c("origin" = "faa")) %>%
+  head() %>%
+  View()
+
+
+
+# How can we join flights with weather?
+  flights %>%
+  left_join(weather, by=c("year", "month", "day", "hour", "origin")) %>%
+  View()
+```
+
+
+Filtering Joins
+========================================================
+Instead of adding data, filtering joins remove data according to matches.
+```{r}
+x
+y
+
+# Keep all observations in x that have a match in y
+semi_join(x,y, by="key")
+
+#This is a handy way of filtering, sometimes. Like, if we have a list of the 10 biggest airports, and we only want to keep flight observations that came from those airports.
+
+#Drop all observations in x that have a match in y
+anti_join(x, y, by="key")
+```
+
+Set operations
+========================================================
+These operations only work when both dataframes have exactly the same columns. 
+```{r}
+# This won't work:
+intersect(x, y)
+```
+
+```{r}
+df1 <- tribble(
+  ~x, ~y,
+   1,  1,
+   2,  1
+)
+df2 <- tribble(
+  ~x, ~y,
+   1,  1,
+   1,  2
+)
+
+# Return only observations that occur in both x and y (that are exactly the same)
+intersect(df1, df2)
+
+# Return unique observations from x and y (only observations that do NOT occur in both)
+union(df1, df2)
+
+# Return observations in x, but not in y (the difference between the two sets)
+setdiff(df1,df2)
+
+# Return observations in y, but not in x
+setdiff(df2, df1)
+
+```
+
+
+Working with Factors
+======
+```{r}
+library(palmerpenguins)
+class(penguins$species)
+
+levels(penguins$species)
+levels(penguins$species)[1]
+
+ggplot(penguins, aes(x=species, y=body_mass_g, fill=species)) +
+         geom_boxplot()
+
+# Renaming Factor Levels
+levels(penguins$species)[1] <- "eiledA"
+levels(penguins$species) <- c("eiladA", "partsnihC", "ootneG")
+
+ggplot(penguins, aes(x=species, y=body_mass_g, fill=species)) +
+         geom_boxplot()
+
+# Reordering Factors
+penguins$species <- factor(penguins$species, levels = c("ootneG", "partsnihC", "eiladA"))
+
+ggplot(penguins, aes(x=species, y=body_mass_g, fill=species)) +
+         geom_boxplot()
+
+# Grouping Factors
+penguins$species <- fct_collapse(penguins$species,
+                                 "Gentoo" = "ootneG",
+                                 'Not Gentoo' = c("partsnihC", "eiladA"))
+    
+ggplot(penguins, aes(x=species, y=body_mass_g, fill=species)) +
+         geom_boxplot()
+
+
+
+```
+Note: I would recommend creating a new, duplicate column for re-factoring, to test if your code works. Nothing is worse than accidentally wiping out a factor level you needed, and having to re-run many lines of code or (even worse), redownload/re-read your data to get it back.
+

@@ -1,0 +1,309 @@
+---
+title: "Time Series Analysis"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+# Working with lubridate
+
+Turning numbers/characters into date formats:
+
+```{r}
+ymd(20200301)
+mdy("03/01/2020")
+```
+
+Note that both dates get parsed into the same end format
+
+Pulling info from a pre-formatted date:
+
+```{r}
+(example_date <- mdy("3/9/2021"))
+month(example_date)
+year(example_date)
+day(example_date)
+wday(example_date, label = TRUE)
+```
+
+Working with Time Zones (not commonly needed in typical data analysis)
+
+```{r}
+example_time <- ymd_hms("2020-03-08 12:30:30")
+#Check out the time zone
+example_time
+#Adjusting time zone:
+Sys.timezone()
+with_tz(example_time, "America/Denver")
+```
+
+Rounding
+
+```{r}
+floor_date(example_date, unit = "month")
+ceiling_date(example_date, unit = "month")
+```
+
+Adding/Subtracting
+
+```{r}
+example_date + days(4) + months(1) - years(3)
+```
+
+Working with dates in a tibble
+
+```{r}
+data(lakers)
+View(lakers)
+```
+
+If we hover over the date/time columns, we can see that they are not
+actually in date/time format:
+
+```{r}
+class(lakers$date)
+class(lakers$time)
+```
+
+So we want to convert them over:
+
+```{r}
+lakers$time <- hm(lakers$time) #hm is a lubridate function that stands for hour:minute
+lakers$date <- ymd(lakers$date) #ymd = year month day
+```
+
+Checking for date comparisons:
+
+```{r}
+table(lakers$date > ymd("2008-10-28"))
+table(lakers$time > hm("01:00"))
+```
+
+# Time Series Analysis in R
+
+Road Casualties in Great Britain 1969-84 **Compulsory seatbelt wearing
+introduced in Jan, 1983.**
+
+```{r}
+data(Seatbelts)
+Seatbelts
+
+```
+
+Refer to the book for how to create a time-series database, and refer to
+the lubridate function for how to format dates.
+
+Easily plotting time series data:
+
+```{r}
+plot.ts(Seatbelts)
+```
+
+What do you notice about these plots?
+
+There are three possible components to a typical time-series:
+
+1.  
+
+    -   The trend - the underlying pattern of the data
+
+2\. - The irregularity - the unpredictable "noise" of the data
+
+3\. - The seasonality - predictable, cyclical patterns in the data
+associated with particular time periods
+
+Non seasonal data (data without a seasonal component) can simply be
+smoothed. Our data looks pretty seasonal, but here's an example anyway:
+
+```{r}
+library(TTR)
+
+#n = 3 means that we're using a simple moving average of order 3
+smooth_pet_price <- SMA(Seatbelts[, "PetrolPrice"], n = 3)
+#Boosting n to 15
+smoother_pet_price <- SMA(Seatbelts[, "PetrolPrice"], n = 15)
+plot.ts(smooth_pet_price, main = "Smooth")
+plot.ts(smoother_pet_price, main = "Smoother")
+```
+
+Back to the entirety of our data:
+
+```{r}
+plot.ts(Seatbelts[,"DriversKilled"])
+```
+
+To "decompose" our other variables into their three components, we can
+use the "decompose" function.
+
+```{r}
+killed_components <- decompose(Seatbelts[,"DriversKilled"])
+#Note that we can access each of our decomposed lines through this object:
+killed_components
+```
+
+We can also plot our components together:
+
+```{r}
+plot(killed_components)
+```
+
+*What do these plots?*
+
+Creating a seasonally adjusted dataset:
+
+```{r}
+seasonally_adjusted_deaths <- Seatbelts[,"DriversKilled"] - killed_components$seasonal
+#Original databset:
+plot(Seatbelts[,"DriversKilled"], main = "Unadjusted")
+#Adjusted dataset (now just trend + non-seasonal noise):
+plot(seasonally_adjusted_deaths, main = "Seasonally Adjusted")
+```
+
+Now that we've adjusted for seasonality, we could do some basic
+exponential smoothing to forecast our data out for a short time (but
+note - because we removed seasonality in this case, our forecast won't
+actually be accurate).
+
+```{r}
+forecast_deaths <- HoltWinters(seasonally_adjusted_deaths)
+forecast_deaths
+
+#By default, HoltWinters makes forecasts for the dates already in our dataset, so we
+# can compare its predictions to reality:
+plot(forecast_deaths)
+```
+
+Not bad! But that's using our training dataset to predict our training
+dataset. A weak picture of the actual model of our data to be sure.
+
+Here's a version that attempts to account for seasonality:
+
+```{r}
+forecast_deaths_seasonal <- HoltWinters(Seatbelts[,"DriversKilled"], gamma = TRUE)
+forecast_deaths_seasonal
+plot(forecast_deaths_seasonal)
+```
+
+This model has similar performance, now accounting for seasonality.
+
+Now let's get more adventurous:
+
+```{r}
+library(forecast)
+#h is the argument that lets us select how many time units out to forecast
+deaths_actual_forecast <- forecast(forecast_deaths_seasonal, h = 20)
+plot(deaths_actual_forecast)
+```
+
+We can also plot our residuals, to see how our model performs overall,
+on the data we actually have.
+
+```{r}
+plot(deaths_actual_forecast$residuals)
+```
+
+# Running a Basic Regression on Time Series Data:
+
+You can use the tslm(), or time series linear model, function to do
+this.
+
+```{r}
+tslm_fit <- tslm(DriversKilled ~ law + kms, data = Seatbelts)
+summary(tslm_fit)
+```
+
+Side note: Why wouldn't we also include petrol price, to give our model
+as many variables as possible? To get our answer, why don't we look at
+the relationship between kms traveled and petrol price:
+
+```{r}
+other_fit <- tslm(kms ~ PetrolPrice, data = Seatbelts)
+summary(other_fit)
+```
+
+Answer: Including both petrol price and kms traveled would mess with our
+model and make both variables look less significant:
+
+```{r}
+another_fit <- tslm(DriversKilled ~ law + kms + PetrolPrice, data = Seatbelts)
+summary(another_fit)
+```
+
+How does tslm work? Basically, it creates a trend and a seasonal
+variable behind the scenes that it controls for in the regression.
+
+# Getting more advanced (you won't need this for project \#3)
+
+Another option: plm, or panel linear model. This one is more complex,
+but also more advanced, and more flexible for a variety of scenarios.
+However, it requires panel data - which tends to be larger than what
+you've seen already. We're barely going to touch on this, but panel data
+and panel modeling is a big part of econometrics.
+
+Converting our ts object into a tsibble object (to better work with the
+tidyverse)
+
+```{r}
+library(tsibble)
+tidy_seatbelts <- Seatbelts %>% as_tsibble() %>%
+                      pivot_wider(names_from = key, values_from = value) %>%
+                      mutate(Year = lubridate::year(index))
+
+tidy_seatbelts
+```
+
+This won't work:
+
+```{r}
+fit_panel_model <- plm(DriversKilled ~ law + kms, index = c("index"), model = "within", data = tidy_seatbelts)
+```
+
+It doesn't work, because the model expects a lot more data per index
+unit.
+
+Let's try this:
+
+```{r}
+fit_panel_model <- plm(DriversKilled ~ law + kms, index = c("Year"), model = "within", data = tidy_seatbelts)
+summary(fit_panel_model)
+```
+
+This technically works, but still doesn't really give us the right
+results. That's because our data is pretty simple, It's not really full
+panel data. We need multiple observations per "index" unit, and we need
+a consistent trend Across the majority of observations, not just our
+last year.
+
+Here's some panel data on cigarette consumption from 1963 to 1992, to
+demonstrate the power of PLM:
+
+```{r}
+data(Cigar)
+View(Cigar)
+```
+
+Building a model on this data:
+
+```{r}
+cigar_plm <- plm(sales ~ price + pop16 + ndi,
+                 data = Cigar, 
+                 index = c("state", "year"),
+                 #within means we are performing a regression model that adjusts for unique states across years
+                 #essentially we're controlling for state and time.
+                 model = "within",
+                 #Two ways means we are looking for unit specific (state) and time specific (year) effects.
+                 effect = "twoways")
+summary(cigar_plm)
+```
+
+Note - IT IS VERY IMPORTANT TO MAKE SURE THAT YEAR IS RECORDED AS A
+DATE/TIME or CATEGORICAL VARIABLE The same goes for any categorical
+factor - make sure it isn't being recorded as a continuous number. If
+you plug a categorical variable into a regression model as a continous
+variable, it will completely ruin your results.

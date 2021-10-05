@@ -1,0 +1,16 @@
+---
+title: "Introduction Notebook"
+author: "Kamryn Parker"
+date: "2020-08-25"
+output: html_document
+---
+
+
+```{r}
+print("Hello! My name is Kamryn Prker. You can also call me Kam I don't mind either variation")
+```
+#### One thing (or more) that I especially want to learn in this class is (are):
+1. I am most excited to learn more about R and how to use it as a data science tool. I have some experience in R but, I have more in Python when it comes to data science trechniques.
+
+#### One thing (or more) that makes me nervous about this class is (are):
+1. I am nervous about working iwth large data sets becasue it can be a bit nerve wracking with so much data.

@@ -1,0 +1,61 @@
+---
+title: "Homework 5 - Data Reshaping/Merging"
+output: html_notebook
+---
+#Question 1
+1a. Pivot the built-in relig_income dataset, so that the income category columns (2 through 11) are pivoted *longer* into just two columns - one with your category names, and one with their values (name them something that is easy to remember). Save your outcome into a new dataframe.
+```{r}
+library(tidyverse)
+library(dslabs)
+head(relig_income)
+dim(relig_income)
+df <- relig_income %>%
+  pivot_longer(cols = 2:11, #Whcih columns you want to pivot
+               names_to = "Income", #Want to make a column of income instead of multiple
+               values_to = "count") #takes count from previous df and puts it into one column
+head(df)
+```
+
+1b. Pivot your new dataframe *wider* now, by religion, so that you have a column for every religion, and a row for each income category.
+```{r}
+df %>%
+  pivot_wider(id_cols = 'Income', names_from = 'religion', values_from = 'count') %>%
+  head()
+#Id columns is for the main column whihc we wanted to be income
+#Names from is religion to make the rest of the data frame columns
+#Values from is to fill the dataframe with the count of each income per religion
+```
+
+
+#Question 2
+2a. Select the 'state' and 'region' columns from the built-in "murders" dataframe, and save them into another dataframe. This will be our region key.
+```{r}
+head(murders)
+
+#creating new data frame from just the state and region columns
+df <- murders[c("state", "region")] 
+head(df)
+```
+2b. Our region key is missing data for the District of Columbia, which is supposed to be included in our us_contagious_diseases data! We can fix that. I create a new row for D.C. below (which matches exactly how it's typed in the us_contagious_diseases data). *Use the rbind() function to add it to the end of your region key dataframe.*
+```{r}
+# Here's the data that will go into the new row for D.C. in your region key dataframe
+DC_row <- c("District Of Columbia", "South")
+#Here's where you'll use rbind() to add DC_row to the end of your region key
+df <- rbind(df,DC_row)
+tail(df) #used tail to show it had been added to the new dataframe
+```
+2c. Merge the region key dataframe into the us_contagious_diseases dataframe (note that both dataframes have a 'state' column that can be used to connect them). We want to add a region value to each of the observations in the us_contagious_diseases dataframe, so a left_join might work best here. Save the merged dataframe into another dataframe.
+```{r}
+us_contagious_diseases
+new_df <- left_join(df, us_contagious_diseases, by='state') #easy left join of state between data frames
+new_df
+```
+
+2d. Group your new dataframe (which should include all us_contagious_diseases data plus regions) by region, then use the summarize function with the sum() function on the count column to get a table of the total number of cases in each region across all years.
+
+```{r}
+#grouping by region and turning it into a new data frame
+new_df %>% group_by(region) %>%
+  summarize(sum(count,na.rm=TRUE)) #summarizing the sums of each region group, had to remove a N/A value for the Southern region
+```
+

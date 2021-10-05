@@ -1,0 +1,275 @@
+Lecture 2 - Week 5
+===============
+author: 
+date: 
+autosize: true
+
+```{r}
+library(tidyverse)
+library(palmerpenguins)
+```
+
+
+First, a rundown on functions
+================
+```{r}
+# Defining a new function
+
+new_function <- function(x) {
+  x <- (as.numeric(x)*2)^2
+  # The modulo operator checks for a remainder, an easy     
+  # way to tell if a number is odd or even:
+  ifelse ((x %% 2) == 0, 
+    (paste(x, ": Even")),
+    (paste(x,": Odd")))
+}
+
+new_function(5)
+new_function(4)
+```
+
+Applying functions to lists/columns
+======
+Comparing the old-school approach to the vectorized approach.
+```{r results = 'hide'}
+# The old-school approach
+for (element in USArrests$Murder) {
+  print(new_function(element))
+}
+
+# The vectorized approach
+new_function(USArrests$Murder)
+
+```
+
+Iterating over columns
+=============
+So, we've iterated over rows, now let's try doing the same thing over multiple columns:
+```{r results = 'hide'}
+df <- USArrests
+# The old-school approach
+for(i in 1:ncol(df)) {
+  
+  for (ii in 1:nrow(df)){
+    df[ii, i] <- new_function(df[ii,i])
+  }
+}
+View(df)
+# The vectorized approach
+USArrests %>%
+  map_dfr(new_function)
+```
+The map option really just conceals a for loop behind the scenes, but this option is much more readable, and also makes errors less likely (the less typing you do, the fewer typos you get).
+
+
+Different types of mapping functions
+============
+Mapping functions are functions that apply other functions.The tidyverse defines these functions by the type of output that they are designed to produce. Mapping functions take two arguments, .x (the data element) and .f (the function to apply to that element)
+
+*map() is the simplest - it returns a list:
+```{r, results = 'hide'}
+USArrests %>%
+  map(summary)
+```
+* map_lgl() returns a logical vector
+```{r results = 'hide'}
+
+USArrests %>%
+  map_lgl(is.numeric)
+```
+*map_int() & map_dbl() returns numeric vectors
+```{r results = 'hide'}
+# Side note - you can create short functions without defining them - these are called 'anonymous functions')
+USArrests %>%
+  map_int(function(x) length(unique(x)))
+
+
+ penguins %>%
+   select_if(is.numeric) %>%
+   select(-year) %>%
+  #Select or select_if can be a useful function for making sure that we are only mapping a function over columns that it makes sense for:
+  map_dbl(mean, na.rm=TRUE)
+  #map_dfr(function(x) x * 3)
+```
+
+Different Types of Mapping Functions Cont'd.
+======
+*map_chr() returns a character vector
+```{r results = 'hide'}
+penguins %>%
+  map_chr(class)
+```
+*map_dfr() returns a dataframe
+```{r results = 'hide'}
+penguins %>%
+  select_if(is.numeric) %>%
+  select(-year) %>%
+  map_dfr(function(x) x * 2)
+#What will happen if I use the map() function instead, with the same function?
+ #map(function(x) x * 2)
+```
+
+
+You can map over dataframes or vectors:
+======
+```{r results = 'hide'}
+random_vector <- runif(20, min=0, max=20)
+random_vector
+#map is the most flexible because it can be used on any type of data, but often, specifying the kind of output you want is better and more convenient later on.
+map(random_vector, function(x) x/2)
+
+penguins %>%
+  select_if(is.numeric) %>%
+  map(function(x) x/2)
+
+map_dbl(random_vector, function(x) x/2)
+#Side note, you can use a one-sided function notation to make a custom function that's even shorter than an anonymous function:
+map_dbl(random_vector, ~ .x/2)
+
+map_chr(random_vector, function(x) ifelse(x > 10, "Greater", "Less Than"))
+```
+Map functions can have type errors:
+```{r eval= FALSE}
+#Note that the type-specific forms of map need type-specific inputs to get type-specific outputs.
+map_int(random_vector, function(x) x/2)
+```
+
+Testing things out
+======
+```{r}
+#Let's define a function that does something simple, and returns a numeric outcome.
+
+toy_function <- function(x){
+  x <- x*2
+  return(x)
+}
+
+toy_function(37684)
+
+#Let's apply it to a vector
+toy_function(random_vector)
+
+map_dbl(random_vector, toy_function)
+
+#Let's apply it to a dataframe
+penguins %>%
+  select_if(is.numeric) %>%
+  map_dfr(toy_function)
+
+#Now let's try a character-based function, and map.
+char_function <- function(string){
+  string <- strtrim(string, width=3)
+  return(string)
+}
+penguins %>%
+  map_chr(class)
+char_function("Mississippi")
+
+penguins %>%
+  select(c("species", "island", "sex")) %>%
+  map_dfr(char_function)
+
+text_number <- 314
+paste(text_number, "is a number.")
+
+```
+
+
+Splitting/Nesting Dataframes
+======
+This is a pretty major perspective change - dataframes don't have to be 1 cell - 1 data point.
+```{r}
+# Splitting
+split_penguins <- penguins %>%
+  split(.$species)
+
+View(split_penguins)
+#Accessing split elements
+split_penguins[[1]]
+
+#Why doesn't this work?
+split_penguins[[1]] %>%
+  mutate(species = paste(species, "is the species of this df")) %>%
+  select("species")
+
+
+# Nesting
+penguins %>%
+  group_by(species) %>%
+  nest() %>%
+  View()
+
+#Accessing nested elements within a dataframe
+nested_penguins <- penguins %>%
+  group_by(species) %>%
+  nest()
+
+#Accessing our list of dataframes by species (basically the same thing as split)
+nested_penguins$data
+
+#Accessing the first species dataframe
+nested_penguins$data[[1]]
+
+#Accessing elements from this dataframe
+colnames(nested_penguins$data[[1]])
+
+#Dataframes within a dataframe can be accessed just like any other dataframe, with their own columns and everything
+nested_penguins$data[[1]] %>%
+  select(island, sex) %>%
+  count(island, sex)
+
+```
+Splitting and nesting are pretty similar, and can both be used for running functions on subsets of data. Nesting might be a little neater, but it's a matter of personal preference.
+
+Using map to work with split/nested dataframes
+======
+```{r}
+#With a split dataframe
+mtcars %>%
+  split(.$cyl) %>%
+  #View() %>%
+  map(., function(x) x$disp/x$hp)
+  #A shortened version
+  map(., ~ .$disp/.$hp)
+
+#Nested data isn't as easy to edit (better to do that before nesting), but it makes modeling across multiple categories very clean and easy:
+nested <- mtcars %>%
+  group_by(cyl) %>%
+  nest() %>%
+  # Nested data works better if you use mutate and map together:
+  mutate(model = map(data, function(df) lm(mpg ~ wt, data = df)))
+
+View(nested)
+View(nested$data[[2]])
+```
+
+Additional forms of map
+=====
+*Working with more arguments
+map2(.x, .y, function)
+```{r}
+#map2 lets you put in two arguments, .x and .y to apply a function to. It works best with mutate.
+penguins %>%
+  mutate(bill_ratio = map2_dbl(bill_length_mm, bill_depth_mm, ~ .x/.y)) %>%
+  View()
+
+#Another example
+penguins %>%
+  mutate(new = map2_chr(sex, species, ~ paste("This is a ", .x, .y))) %>%
+  select(new)
+
+# An example of applying a pre-built two argument function with a map function.
+example_function(x,y)
+
+penguins %>%
+  mutate(new_column = map2_chr(argument_x, argument_y, example_function))
+
+
+#pmap lets you put in an an arbitrary number of arguments, but you have to explicitly name all of your arguments in a list.
+penguins %>%
+  mutate(penguin_summary = pmap_chr(list(x = species,
+                                    y = island,
+                                    z = sex),
+                                    .f = function(x,y,z) paste(x, y, z))) %>%
+  View()
+```
